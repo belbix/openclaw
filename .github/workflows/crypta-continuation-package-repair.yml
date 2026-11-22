@@ -1,0 +1,86 @@
+name: Crypta canonical package repair
+on:
+  workflow_dispatch:
+  push:
+    branches: [crypta/runtime-continuation-v11.3]
+    paths: [.github/workflows/crypta-continuation-package-repair.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CRYPTA_ORIGINAL_BUILD_RUN: "45070242434"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 384142dc4540c2f9277a46702f41bb7878f62d44
+      - uses: ./.github/actions/setup-node-env
+        with:
+          install-bun: "false"
+          semantic-checks: "true"
+      - name: Restore exact previously proven build artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/belbix/openclaw/actions/runs/45070242434 > "$RUNNER_TEMP/source-run.json"
+          gh run download 45070242434 --repo belbix/openclaw --name crypta-continuation-candidate --dir "$RUNNER_TEMP/previous"
+          python3 <<'PYTHON'
+          import hashlib, json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          run = json.loads((root / 'source-run.json').read_text())
+          assert run['head_sha'] == '384142dc4540c2f9277a46702f41bb7878f62d44' and run['conclusion'] == 'success'
+          previous = root / 'previous'
+          expected = {'openclaw-2026.11.3.tgz', 'openclaw-codex-2026.11.3.tgz'}
+          seen = set()
+          for line in (previous / 'candidate.sha256').read_text().splitlines():
+              digest, name = line.split(maxsplit=1)
+              name = pathlib.PurePosixPath(name.lstrip('*')).name
+              assert name in expected and name not in seen
+              assert hashlib.file_digest((previous / name).open('rb'), 'sha256').hexdigest() == digest
+              seen.add(name)
+          assert seen == expected
+          PYTHON
+          tar -xzf "$RUNNER_TEMP/previous/openclaw-2026.11.3.tgz" --strip-components=1 -C "$PWD" package/dist
+          cp "$RUNNER_TEMP/previous/openclaw-codex-2026.11.3.tgz" "$RUNNER_TEMP/openclaw-codex-2026.11.3.tgz"
+      - name: Build exact-source workspace AI package only
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: node --import ./scripts/tsx.mjs scripts/tsdown-build.mts --config tsdown.ai.config.ts
+      - name: Pack canonical self-contained candidate
+        run: |
+          node scripts/package-openclaw-for-docker.mjs --skip-build --allow-unreleased-changelog --output-dir "$RUNNER_TEMP/core-package"
+          mv "$RUNNER_TEMP/core-package/openclaw-2026.11.3.tgz" "$RUNNER_TEMP/openclaw-2026.11.3.tgz"
+      - name: Verify packed installation and public SDK
+        run: |
+          mkdir -p "$RUNNER_TEMP/installed-candidate"
+          printf '{"name":"crypta-package-install-proof","private":true}' > "$RUNNER_TEMP/installed-candidate/package.json"
+          npm install --prefix "$RUNNER_TEMP/installed-candidate" --no-audit --no-fund --omit=dev "$RUNNER_TEMP/openclaw-2026.11.3.tgz"
+          node "$RUNNER_TEMP/installed-candidate/node_modules/openclaw/dist/index.js" --version
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import path from 'node:path';
+          import {pathToFileURL} from 'node:url';
+          const sdk = await import(pathToFileURL(path.join(process.env.RUNNER_TEMP, 'installed-candidate/node_modules/openclaw/dist/plugin-sdk/gateway-runtime.js')));
+          assert.equal(typeof sdk.GatewayClient, 'function');
+          console.log('Installed candidate CLI and public Gateway SDK passed.');
+          NODE
+      - name: Record package identity and hashes
+        run: |
+          python3 <<'PYTHON'
+          import json, os, pathlib, subprocess
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          source = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          (root / 'candidate-source.json').write_text(json.dumps({'sourceHead': source, 'originalBuildRun': int(os.environ.get('CRYPTA_ORIGINAL_BUILD_RUN', os.environ['GITHUB_RUN_ID'])), 'packagingWorkflowHead': os.environ['GITHUB_SHA'], 'packagingRun': int(os.environ['GITHUB_RUN_ID']), 'kind': 'canonical-self-contained'}))
+          PYTHON
+          sha256sum "$RUNNER_TEMP"/openclaw-*.tgz > "$RUNNER_TEMP/candidate.sha256"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: crypta-continuation-candidate
+          path: |
+            ${{ runner.temp }}/openclaw-*.tgz
+            ${{ runner.temp }}/candidate.sha256
+            ${{ runner.temp }}/candidate-source.json
+          retention-days: 3
