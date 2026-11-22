@@ -225,7 +225,7 @@ export async function prepareCodexThreadRequestContext(
   if (continuation?.enabled) {
     if (!inference || !source)
       throw new AgentHarnessPreflightError(
-        "Technical continuation requires an owned inference route and operator source",
+        `Technical continuation requires an owned inference route and operator source (route=${Boolean(inference)}, source=${Boolean(source)})`,
       );
     // Full history only: native WebSocket deltas cannot replace a durable canonical checkpoint.
     params.config = { ...params.config };

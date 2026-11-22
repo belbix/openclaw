@@ -28,10 +28,23 @@ const sse = (item) => {
 };
 const original = globalThis.fetch;
 const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'";
+const requestBody = async (input, init) => {
+  if (init?.body !== undefined) return await new Response(init.body).json();
+  if (input instanceof Request) return await input.clone().json();
+  return {};
+};
 const fixtureFetch = async (input, init) => {
   const url = new URL(input instanceof Request ? input.url : String(input));
   if (url.hostname === "api.openai.com" && url.pathname.endsWith("/responses")) {
-    const body = JSON.parse(String(init?.body ?? "{}"));
+    const body = await requestBody(input, init);
+    if (body.model !== "gpt-5.5") {
+      return sse({
+        type: "message",
+        id: "utility",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Synthetic utility response", annotations: [] }],
+      });
+    }
     stats.primary++;
     stats.nativeTools = (body.tools ?? []).map(({ type, name }) => ({ type, name }));
     const result = (body.input ?? []).find(
@@ -69,7 +82,7 @@ const fixtureFetch = async (input, init) => {
     });
   }
   if (url.hostname === "api.moonshot.ai" && url.pathname.endsWith("/chat/completions")) {
-    const body = JSON.parse(String(init?.body ?? "{}"));
+    const body = await requestBody(input, init);
     stats.fallback++;
     stats.savedResult &&= (body.messages ?? []).some(
       (message) =>

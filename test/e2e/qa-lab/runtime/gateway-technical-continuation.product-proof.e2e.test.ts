@@ -32,6 +32,17 @@ describe("native Gateway technical continuation", () => {
           "dist/index.js",
         ],
         env: {
+          // Hermetic synthetic upstreams do not inherit runner-specific native trust/proxy profiles.
+          HTTP_PROXY: undefined,
+          HTTPS_PROXY: undefined,
+          ALL_PROXY: undefined,
+          NO_PROXY: undefined,
+          http_proxy: undefined,
+          https_proxy: undefined,
+          all_proxy: undefined,
+          no_proxy: undefined,
+          SSL_CERT_FILE: undefined,
+          CODEX_CA_CERTIFICATE: undefined,
           OPENCLAW_SKIP_PROVIDERS: undefined,
           OPENCLAW_TEST_MINIMAL_GATEWAY: undefined,
           OPENAI_API_KEY: "synthetic-openai-canary",
@@ -137,6 +148,7 @@ describe("native Gateway technical continuation", () => {
           { runId: started.runId, timeoutMs: 120_000 },
           { timeoutMs: 125_000 },
         );
+        console.log("Native terminal:", JSON.stringify(terminal));
         expect(await fs.readFile(marker, "utf8")).toBe("one");
         const stats = JSON.parse(await fs.readFile(evidence, "utf8"));
         expect(stats).toMatchObject({
