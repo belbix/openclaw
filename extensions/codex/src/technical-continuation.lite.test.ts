@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { snapshotRequest, fallbackContext } from "./app-server/technical-continuation-protocol.js";
+import {
+  snapshotRequest,
+  fallbackContext,
+  pendingResponseCalls,
+} from "./app-server/technical-continuation-protocol.js";
 
 const tools = [
   { type: "function", name: "write_marker", parameters: { type: "object", properties: {} } },
@@ -14,10 +18,17 @@ function lite() {
         role: "developer",
         content: [{ type: "input_text", text: "Keep the saved result." }],
       },
-      { type: "function_call", id: "effect-1", name: "write_marker", arguments: "{}" },
+      {
+        type: "function_call",
+        id: "fc-item",
+        call_id: "effect-1",
+        name: "write_marker",
+        arguments: "{}",
+      },
       {
         type: "function_call_output",
-        id: "effect-1",
+        id: "fco-item",
+        call_id: "effect-1",
         name: "write_marker",
         output: "written-once",
       },
@@ -27,7 +38,7 @@ function lite() {
 }
 
 describe("native Responses Lite continuation boundary", () => {
-  it("retains the native catalog and confirmed id-linked result across checkpoint projection", () => {
+  it("retains the native catalog and confirmed call-id-linked result across checkpoint projection", () => {
     const body = lite();
     (body.input[1] as Record<string, unknown>).internal_chat_message_metadata_passthrough = {
       transport: "private-native-carrier",
@@ -51,22 +62,49 @@ describe("native Responses Lite continuation boundary", () => {
     expect(snapshotRequest(first.canonical)).toEqual(first);
   });
 
-  it("keeps a scheduled native id without a result uncertain", () => {
+  it("accepts paired outputs without item IDs, as the native protocol specifies", () => {
+    const body = lite();
+    for (const item of body.input.slice(2, 4)) delete (item as Record<string, unknown>).id;
+    expect(snapshotRequest(body).completed).toMatchObject([
+      { id: "effect-1", result: "written-once" },
+    ]);
+  });
+
+  it("journals the native response call ID before release, independently of its item ID", () => {
+    const item = lite().input[2];
+    const bytes = Buffer.from(
+      "data: " +
+        JSON.stringify({
+          type: "response.completed",
+          response: { output: [item] },
+        }) +
+        "\n\n",
+    );
+    expect(pendingResponseCalls(bytes, [])).toEqual(["effect-1"]);
+    expect(() => pendingResponseCalls(bytes, snapshotRequest(lite()).completed)).toThrow(
+      "duplicate_tool_call",
+    );
+  });
+
+  it("keeps a scheduled native call ID without a result uncertain", () => {
     const body = lite();
     body.input.splice(3, 1);
     expect(snapshotRequest(body).uncertain).toEqual(["effect-1"]);
     expect(() => fallbackContext(body)).toThrow("reconciliation_required");
   });
 
-  it.each(["unknown-id", "missing-id", "wrong-name", "conflicting-call-id"])(
+  it.each(["unknown-call-id", "missing-call-id", "wrong-name", "item-id-without-call-id"])(
     "rejects ambiguous native receipts: %s",
     (kind) => {
       const body = lite();
       const output = body.input[3] as Record<string, unknown>;
-      if (kind === "unknown-id") output.id = "other-effect";
-      if (kind === "missing-id") delete output.id;
+      if (kind === "unknown-call-id") output.call_id = "other-effect";
+      if (kind === "missing-call-id") delete output.call_id;
       if (kind === "wrong-name") output.name = "different_tool";
-      if (kind === "conflicting-call-id") output.call_id = "different-call";
+      if (kind === "item-id-without-call-id") {
+        output.id = "effect-1";
+        delete output.call_id;
+      }
       expect(() => snapshotRequest(body)).toThrow();
     },
   );

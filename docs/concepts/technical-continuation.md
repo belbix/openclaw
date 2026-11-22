@@ -88,8 +88,9 @@ Native Responses Lite catalogs are admitted only as one initial developer-owned
 `additional_tools` record; they cannot replace a different top-level catalog or
 change partway through the history. Strict reasoning-effort configuration updates
 remain in the checkpoint but are not promoted into portable instructions. Lite
-call/results use their explicit matching native IDs. Missing, conflicting or
-orphan result identities still stop for reconciliation; names and argument
+calls/results use their explicit matching `call_id`, independently of optional
+history item `id` values. Missing or orphan result identities still stop for
+reconciliation; names and argument
 similarity never establish a receipt.
 
 Native provider-hosted `web_search` and `tool_search` declarations are not portable:

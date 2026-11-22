@@ -73,25 +73,9 @@ function nativeInput(body: JsonObject, values: unknown[]) {
         )
           throw new ContinuationStopped("incompatible_history");
       }
-      if (
-        lite &&
-        [
-          "function_call",
-          "custom_tool_call",
-          "function_call_output",
-          "custom_tool_call_output",
-        ].includes(String(item.type))
-      ) {
-        // Lite's id is the explicit call identity, not an argument/name heuristic.
-        // Never repair an orphan result or choose between conflicting identifiers.
-        if (
-          typeof item.id !== "string" ||
-          !item.id ||
-          (item.call_id !== undefined && item.call_id !== item.id)
-        )
-          throw new ContinuationStopped("incompatible_history");
-        return { ...item, call_id: item.id };
-      }
+      // Item IDs identify history records, not tool invocations. Both Responses
+      // dialects link paired calls/results by call_id; unpaired native outputs
+      // (for example notifications) remain unsupported and fail closed below.
       return item;
     });
   return { input, tools };
