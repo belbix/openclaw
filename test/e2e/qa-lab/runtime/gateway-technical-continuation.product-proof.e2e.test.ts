@@ -87,7 +87,13 @@ describe("native Gateway technical continuation", () => {
           },
         },
       });
-      onTestFailed(() => console.error(instance.logs()));
+      onTestFailed(async () => {
+        console.error(instance.logs());
+        const observed = await fs
+          .readFile(instance.state.path("provider-evidence.json"), "utf8")
+          .catch(() => "no provider I/O observed");
+        console.error("Synthetic provider evidence:", observed);
+      });
       const marker = instance.state.path("effect-marker");
       const evidence = instance.state.path("provider-evidence.json");
       instance.env.CRYPTA_CANARY_MARKER = marker;
@@ -96,9 +102,12 @@ describe("native Gateway technical continuation", () => {
       try {
         const packedPlugin = process.env.CRYPTA_CANARY_CODEX_TARBALL;
         if (!packedPlugin) throw new Error("Canary requires the candidate Codex tarball");
-        const installed = await instance.cli(["plugins", "install", packedPlugin, "--force"], {
-          timeoutMs: 120_000,
-        });
+        const installed = await instance.cli(
+          ["plugins", "install", packedPlugin, "--force", "--accept-capabilities"],
+          {
+            timeoutMs: 120_000,
+          },
+        );
         expect(installed.code, installed.stderr + installed.stdout).toBe(0);
         await instance.startGateway();
         client = await connectGatewayStatusClient(instance);

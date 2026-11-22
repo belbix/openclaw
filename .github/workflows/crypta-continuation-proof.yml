@@ -24,23 +24,6 @@ jobs:
           git fetch --depth=1 origin 847611dcaa3bf0e2783335f961dd1fd0580e4d9f
           mapfile -t changed < <(git diff --name-only 847611dcaa3bf0e2783335f961dd1fd0580e4d9f HEAD)
           pnpm exec oxfmt --check "${changed[@]}"
-      - name: Targeted behavioral proofs
-        run: >-
-          node scripts/run-vitest.mjs
-          extensions/codex/src/technical-continuation.test.ts
-          extensions/codex/src/technical-continuation.namespace.test.ts
-          extensions/codex/src/technical-continuation.http.test.ts
-          extensions/codex/src/technical-continuation.store.test.ts
-          extensions/codex/src/app-server/config.test.ts
-          src/agents/embedded-agent-runner/result-fallback-classifier.test.ts
-          src/agents/harness/host-model-request.test.ts
-          src/agents/harness/host-capability.source-lifetime.test.ts
-          src/auto-reply/reply/agent-runner-execution-command-events.test.ts
-          extensions/codex/src/app-server/native-subagent-monitor.parent-retention.test.ts
-          extensions/codex/src/app-server/inference-proxy.http.test.ts
-          --maxWorkers=2
-      - name: Core and extension types
-        run: pnpm tsgo:core && pnpm tsgo:extensions
       - name: Build runtime for early native canary
         run: node --import ./scripts/tsx.mjs scripts/build-all.mts runtime
         env:
@@ -58,6 +41,23 @@ jobs:
           OPENCLAW_E2E_VERBOSE: "1"
           OPENCLAW_E2E_USE_PREBUILT_DIST: "1"
           CRYPTA_CANARY_CODEX_TARBALL: ${{ runner.temp }}/openclaw-codex-2026.11.3.tgz
+      - name: Targeted behavioral proofs
+        run: >-
+          node scripts/run-vitest.mjs
+          extensions/codex/src/technical-continuation.test.ts
+          extensions/codex/src/technical-continuation.namespace.test.ts
+          extensions/codex/src/technical-continuation.http.test.ts
+          extensions/codex/src/technical-continuation.store.test.ts
+          extensions/codex/src/app-server/config.test.ts
+          src/agents/embedded-agent-runner/result-fallback-classifier.test.ts
+          src/agents/harness/host-model-request.test.ts
+          src/agents/harness/host-capability.source-lifetime.test.ts
+          src/auto-reply/reply/agent-runner-execution-command-events.test.ts
+          extensions/codex/src/app-server/native-subagent-monitor.parent-retention.test.ts
+          extensions/codex/src/app-server/inference-proxy.http.test.ts
+          --maxWorkers=2
+      - name: Core and extension types
+        run: pnpm tsgo:core && pnpm tsgo:extensions
       - name: Build candidate package
         run: pnpm build:package
         env:

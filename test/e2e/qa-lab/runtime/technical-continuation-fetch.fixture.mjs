@@ -33,6 +33,7 @@ const fixtureFetch = async (input, init) => {
   if (url.hostname === "api.openai.com" && url.pathname.endsWith("/responses")) {
     const body = JSON.parse(String(init?.body ?? "{}"));
     stats.primary++;
+    stats.nativeTools = (body.tools ?? []).map(({ type, name }) => ({ type, name }));
     const result = (body.input ?? []).find(
       (item) => item.type === "function_call_output" && item.call_id === "crypta_marker",
     );
