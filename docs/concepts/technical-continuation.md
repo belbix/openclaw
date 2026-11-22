@@ -80,6 +80,10 @@ agents. Authorization, budget, cancellation, unrecognized errors and incompatibl
 history stop. Unsupported native response actions and provider-specific incremental
 history are rejected rather than silently dropped. Only text and function/custom
 tool history can cross providers; encrypted reasoning and provider identifiers do not.
+Interleaved native system/developer updates retain their text, priority and original
+conversation position in a trusted instruction timeline because the portable SDK
+has no developer-message variant. User and tool text remain in their data roles
+and are never promoted into that timeline.
 Native provider-hosted `web_search` and `tool_search` declarations are not portable:
 they are excluded from the fallback function catalog with an explicit limitation in
 its instructions. The fallback must stop if one is required. History containing an
