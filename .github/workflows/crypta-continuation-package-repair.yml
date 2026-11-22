@@ -24,6 +24,7 @@ jobs:
       - name: Restore exact previously proven build artifacts
         env:
           GH_TOKEN: ${{ github.token }}
+          NODE_OPTIONS: --max-old-space-size=6144
         run: |
           gh api repos/belbix/openclaw/actions/runs/45070242434 > "$RUNNER_TEMP/source-run.json"
           gh run download 45070242434 --repo belbix/openclaw --name crypta-continuation-candidate --dir "$RUNNER_TEMP/previous"
@@ -43,6 +44,7 @@ jobs:
               seen.add(name)
           assert seen == expected
           PYTHON
+          node --import ./scripts/tsx.mjs scripts/build-all.mts runtime
           tar -xzf "$RUNNER_TEMP/previous/openclaw-2026.11.3.tgz" --strip-components=1 -C "$PWD" package/dist
           cp "$RUNNER_TEMP/previous/openclaw-codex-2026.11.3.tgz" "$RUNNER_TEMP/openclaw-codex-2026.11.3.tgz"
       - name: Build exact-source workspace AI package only
