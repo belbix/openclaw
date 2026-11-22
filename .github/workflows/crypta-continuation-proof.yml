@@ -96,7 +96,7 @@ jobs:
               url = f'{base}/candidate/{run}/{head}/{name}/{index:06d}'
               for attempt in range(3):
                   try:
-                      request = urllib.request.Request(url, data=data, method='PUT', headers={'X-Crypta-Upload-Token': token, 'X-Content-SHA256': digest})
+                      request = urllib.request.Request(url, data=data, method='PUT', headers={'X-Crypta-Upload-Token': token, 'X-Content-SHA256': digest, 'Content-Type': 'application/octet-stream'})
                       with urllib.request.urlopen(request, timeout=45) as response:
                           receipt = json.load(response)
                       assert receipt == {'sha256': digest, 'bytes': len(data)}
