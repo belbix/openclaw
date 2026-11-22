@@ -10,7 +10,7 @@ import { createOpenClawTestInstance } from "../../../helpers/openclaw-test-insta
 describe("native Gateway technical continuation", () => {
   it.each(["technical", "policy"])(
     "preserves one tool effect after %s failure",
-    { timeout: 180_000 },
+    { timeout: 300_000 },
     async (failure) => {
       const primary = "openai/gpt-5.5";
       const fallback = "moonshot/kimi-fixture";
@@ -94,6 +94,12 @@ describe("native Gateway technical continuation", () => {
       instance.env.CRYPTA_CANARY_EVIDENCE = evidence;
       let client: Awaited<ReturnType<typeof connectGatewayStatusClient>> | undefined;
       try {
+        const packedPlugin = process.env.CRYPTA_CANARY_CODEX_TARBALL;
+        if (!packedPlugin) throw new Error("Canary requires the candidate Codex tarball");
+        const installed = await instance.cli(["plugins", "install", packedPlugin, "--force"], {
+          timeoutMs: 120_000,
+        });
+        expect(installed.code, installed.stderr + installed.stdout).toBe(0);
         await instance.startGateway();
         client = await connectGatewayStatusClient(instance);
         const sessionKey = `agent:main:continuation-${randomUUID()}`;
