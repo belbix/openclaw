@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, onTestFailed } from "vitest";
 import { connectGatewayStatusClient } from "../../../helpers/gateway-e2e-harness.js";
@@ -87,12 +88,10 @@ describe("native Gateway technical continuation", () => {
           },
         },
       });
-      onTestFailed(async () => {
+      let providerEvidence = "no provider I/O observed";
+      onTestFailed(() => {
         console.error(instance.logs());
-        const observed = await fs
-          .readFile(instance.state.path("provider-evidence.json"), "utf8")
-          .catch(() => "no provider I/O observed");
-        console.error("Synthetic provider evidence:", observed);
+        console.error("Synthetic provider evidence:", providerEvidence);
       });
       const marker = instance.state.path("effect-marker");
       const evidence = instance.state.path("provider-evidence.json");
@@ -100,6 +99,21 @@ describe("native Gateway technical continuation", () => {
       instance.env.CRYPTA_CANARY_EVIDENCE = evidence;
       let client: Awaited<ReturnType<typeof connectGatewayStatusClient>> | undefined;
       try {
+        // Source builds include a workspace Codex bundle; published core excludes it.
+        // Retain every other real bundled plugin and select the packed Codex owner only.
+        const bundled = path.resolve("dist/extensions");
+        const filteredBundled = instance.state.path("bundled-without-workspace-codex");
+        await fs.mkdir(filteredBundled, { recursive: true });
+        for (const entry of await fs.readdir(bundled, { withFileTypes: true })) {
+          if (entry.isDirectory() && entry.name !== "codex")
+            await fs.symlink(
+              path.join(bundled, entry.name),
+              path.join(filteredBundled, entry.name),
+              "dir",
+            );
+        }
+        instance.env.OPENCLAW_BUNDLED_PLUGINS_DIR = filteredBundled;
+        instance.env.OPENCLAW_TEST_TRUST_BUNDLED_PLUGINS_DIR = "1";
         const packedPlugin = process.env.CRYPTA_CANARY_CODEX_TARBALL;
         if (!packedPlugin) throw new Error("Canary requires the candidate Codex tarball");
         const installed = await instance.cli(
@@ -149,6 +163,9 @@ describe("native Gateway technical continuation", () => {
           }),
         );
       } finally {
+        providerEvidence = await fs
+          .readFile(evidence, "utf8")
+          .catch(() => "no provider I/O observed");
         client?.stop();
         await instance.cleanup();
       }
