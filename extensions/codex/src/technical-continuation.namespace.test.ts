@@ -64,6 +64,21 @@ describe("native namespace continuation boundary", () => {
     expect(text).toContain('"namespace":"functions"');
     expect(text).toContain('"name":"write_marker"');
   });
+  it("accepts native text message shorthand without changing role authority", () => {
+    const context = fallbackContext({
+      model: "gpt-fixture",
+      input: [
+        { role: "developer", content: "Retain this developer rule." },
+        { role: "user", content: "A native text-only request." },
+      ],
+      tools: [],
+    });
+    expect(context.systemPrompt).toContain("Retain this developer rule.");
+    expect(context.messages).toEqual([
+      { role: "user", content: "A native text-only request.", timestamp: 0 },
+    ]);
+  });
+
   it("explicitly removes unavailable hosted capabilities without discarding saved results", () => {
     const context = fallbackContext({
       ...request,

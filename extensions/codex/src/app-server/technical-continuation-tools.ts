@@ -29,7 +29,7 @@ export function continuationToolDeclarations(value: unknown) {
       (tool.type === "function" && !isJsonObject(tool.parameters)) ||
       tool.namespace !== undefined
     )
-      throw new ContinuationStopped("incompatible_history");
+      throw new ContinuationStopped("incompatible_history_tool_schema");
     const native = { ...tool, ...(namespace === undefined ? {} : { namespace }) };
     const wireName = toolWireName(native);
     const identity = JSON.stringify([namespace ?? null, tool.name]);

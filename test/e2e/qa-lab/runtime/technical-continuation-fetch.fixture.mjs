@@ -56,7 +56,19 @@ const fixtureFetch = async (input, init) => {
         ? (tool.tools ?? []).map((entry) => ({ ...entry, namespace: tool.name }))
         : [tool],
     );
-    stats.nativeTools = declared.map(({ type, name, namespace }) => ({ type, name, namespace }));
+    stats.nativeTools = declared.map(({ type, name, namespace, parameters }) => ({
+      type,
+      name,
+      namespace,
+      parametersType: typeof parameters,
+    }));
+    stats.inputShape = (body.input ?? []).map(({ type, role, content, namespace }) => ({
+      type,
+      role,
+      namespace,
+      contentType: typeof content,
+      contentBlocks: Array.isArray(content) ? content.map((block) => block.type) : undefined,
+    }));
     const result = (body.input ?? []).find(
       (item) => item.type === "function_call_output" && item.call_id === "crypta_marker",
     );

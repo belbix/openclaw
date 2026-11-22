@@ -205,11 +205,13 @@ export function fallbackContext(body: JsonObject): Request["context"] {
     if (value.type === "message" || value.role) {
       if (
         !["user", "assistant", "developer", "system"].includes(String(value.role)) ||
-        !Array.isArray(value.content)
+        !(typeof value.content === "string" || Array.isArray(value.content))
       ) {
         throw new ContinuationStopped("incompatible_history");
       }
-      const text = value.content
+      const text = (
+        typeof value.content === "string" ? [{ type: "text", text: value.content }] : value.content
+      )
         .map((c) => {
           if (
             !isJsonObject(c) ||
@@ -233,7 +235,8 @@ export function fallbackContext(body: JsonObject): Request["context"] {
           timestamp: 0,
         });
       } else if (value.role === "developer" || value.role === "system") {
-        if (messages.length) throw new ContinuationStopped("incompatible_history");
+        if (messages.length)
+          throw new ContinuationStopped("incompatible_history_instruction_order");
         instructions.push(text);
       } else {
         messages.push({ role: "user", content: text, timestamp: 0 });
