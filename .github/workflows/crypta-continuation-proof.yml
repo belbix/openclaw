@@ -1,5 +1,6 @@
 name: Crypta continuation candidate
 on:
+  workflow_dispatch:
   push:
     branches: [crypta/runtime-continuation-v11.3]
 permissions:
