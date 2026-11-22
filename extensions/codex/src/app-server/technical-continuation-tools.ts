@@ -1,7 +1,7 @@
 import { isJsonObject, type JsonObject } from "./protocol.js";
 import { ContinuationStopped, digest } from "./technical-continuation-errors.js";
 
-export function toolNamespace(item: JsonObject): string | undefined {
+export function toolNamespace(item: { namespace?: unknown }): string | undefined {
   if (item.namespace === undefined || item.namespace === null) return undefined;
   if (typeof item.namespace !== "string" || !item.namespace.length)
     throw new ContinuationStopped("incompatible_tool_namespace");
@@ -9,7 +9,7 @@ export function toolNamespace(item: JsonObject): string | undefined {
 }
 
 /** Provider-safe, injective within the admitted declaration set; native qualification is retained. */
-export function toolWireName(item: JsonObject): string {
+export function toolWireName(item: { name?: unknown; namespace?: unknown }): string {
   if (typeof item.name !== "string" || !item.name.length)
     throw new ContinuationStopped("incompatible_tool_name");
   const namespace = toolNamespace(item);
