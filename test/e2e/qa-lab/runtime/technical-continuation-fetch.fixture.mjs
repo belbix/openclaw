@@ -55,6 +55,9 @@ const fixtureFetch = async (input, init) => {
       body.tools ??
       (body.input ?? []).find((item) => item.type === "additional_tools")?.tools ??
       [];
+    stats.nativeHostedTools = catalog
+      .filter((tool) => ["web_search", "tool_search"].includes(tool.type))
+      .map((tool) => tool.type);
     const declared = catalog.flatMap((tool) =>
       tool.type === "namespace"
         ? (tool.tools ?? []).map((entry) => ({ ...entry, namespace: tool.name }))
