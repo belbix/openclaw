@@ -11,11 +11,16 @@ import { createOpenClawTestInstance } from "../../../helpers/openclaw-test-insta
 // Real built Gateway + pinned native Codex. Only provider network I/O is synthetic.
 // This is not proof of a live Moonshot account or physical Telegram delivery.
 describe("native Gateway technical continuation", () => {
-  it.each(["technical", "policy"])(
-    "preserves one tool effect after %s failure",
+  it.each([
+    { failure: "technical", modelId: "gpt-5.5" },
+    { failure: "policy", modelId: "gpt-5.5" },
+    { failure: "technical", modelId: "gpt-6.1-sol" },
+    { failure: "policy", modelId: "gpt-6.1-sol" },
+  ])(
+    "preserves one tool effect after $failure failure on $modelId",
     { timeout: 300_000 },
-    async (failure) => {
-      const primary = "openai/gpt-5.5";
+    async ({ failure, modelId }) => {
+      const primary = `openai/${modelId}`;
       const fallback = "moonshot/kimi-fixture";
       const model = (id: string) => ({
         id,
@@ -50,6 +55,7 @@ describe("native Gateway technical continuation", () => {
           OPENAI_API_KEY: "synthetic-openai-canary",
           MOONSHOT_API_KEY: "synthetic-moonshot-canary",
           CRYPTA_CANARY_FAILURE: failure,
+          CRYPTA_CANARY_PRIMARY_MODEL: modelId,
         },
         config: {
           models: {
@@ -58,7 +64,7 @@ describe("native Gateway technical continuation", () => {
                 baseUrl: "https://api.openai.com/v1",
                 api: "openai-responses",
                 apiKey: { source: "env", provider: "default", id: "OPENAI_API_KEY" },
-                models: [model("gpt-5.5")],
+                models: [model(modelId)],
               },
               moonshot: {
                 baseUrl: "https://api.moonshot.ai/v1",

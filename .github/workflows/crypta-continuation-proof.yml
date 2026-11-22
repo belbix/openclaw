@@ -49,6 +49,7 @@ jobs:
           node scripts/run-vitest.mjs
           extensions/codex/src/technical-continuation.test.ts
           extensions/codex/src/technical-continuation.namespace.test.ts
+          extensions/codex/src/technical-continuation.lite.test.ts
           extensions/codex/src/technical-continuation.http.test.ts
           extensions/codex/src/technical-continuation.store.test.ts
           extensions/codex/src/app-server/config.test.ts

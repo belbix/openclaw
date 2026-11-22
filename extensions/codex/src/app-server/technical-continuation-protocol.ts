@@ -36,6 +36,66 @@ function toolArgumentsHash(item: JsonObject): string {
   );
   return digest([item.type, canonical]);
 }
+/** Responses Lite carries its catalog and sampling updates in full input history. */
+function nativeInput(body: JsonObject, values: unknown[]) {
+  const prefix = values[0];
+  const lite = isJsonObject(prefix) && prefix.type === "additional_tools";
+  let tools = body.tools;
+  if (lite) {
+    if (
+      prefix.role !== "developer" ||
+      !Array.isArray(prefix.tools) ||
+      Object.keys(prefix).some((key) => !["type", "id", "role", "tools"].includes(key))
+    )
+      throw new ContinuationStopped("incompatible_history");
+    continuationToolDeclarations(prefix.tools);
+    if (tools !== undefined && JSON.stringify(tools) !== JSON.stringify(prefix.tools))
+      throw new ContinuationStopped("ambiguous_tool_declaration");
+    tools = prefix.tools;
+  }
+  const input = values
+    .filter((item) => !(isJsonObject(item) && item.type === "reasoning"))
+    .map((value, index) => {
+      if (!isJsonObject(value)) throw new ContinuationStopped("incompatible_history");
+      const item = { ...value };
+      delete item.internal_chat_message_metadata_passthrough;
+      if (item.type === "additional_tools" && (!lite || index !== 0))
+        throw new ContinuationStopped("incompatible_history");
+      if (item.type === "configuration_update") {
+        if (
+          !lite ||
+          Object.keys(item).some((key) => !["type", "reasoning"].includes(key)) ||
+          !isJsonObject(item.reasoning) ||
+          Object.keys(item.reasoning).some((key) => key !== "effort") ||
+          !["none", "minimal", "low", "medium", "high", "xhigh"].includes(
+            String(item.reasoning.effort),
+          )
+        )
+          throw new ContinuationStopped("incompatible_history");
+      }
+      if (
+        lite &&
+        [
+          "function_call",
+          "custom_tool_call",
+          "function_call_output",
+          "custom_tool_call_output",
+        ].includes(String(item.type))
+      ) {
+        // Lite's id is the explicit call identity, not an argument/name heuristic.
+        // Never repair an orphan result or choose between conflicting identifiers.
+        if (
+          typeof item.id !== "string" ||
+          !item.id ||
+          (item.call_id !== undefined && item.call_id !== item.id)
+        )
+          throw new ContinuationStopped("incompatible_history");
+        return { ...item, call_id: item.id };
+      }
+      return item;
+    });
+  return { input, tools };
+}
 export function snapshotRequest(body: JsonObject) {
   if (body.previous_response_id || !Array.isArray(body.input) || typeof body.model !== "string") {
     throw new ContinuationStopped("incompatible_history");
@@ -51,7 +111,7 @@ export function snapshotRequest(body: JsonObject) {
       receipt?: string;
     }
   >();
-  const input = body.input.filter((item) => !(isJsonObject(item) && item.type === "reasoning"));
+  const { input, tools } = nativeInput(body, body.input);
   for (const item of input) {
     if (!isJsonObject(item)) {
       throw new ContinuationStopped("incompatible_history");
@@ -72,11 +132,19 @@ export function snapshotRequest(body: JsonObject) {
       });
     } else if (item.type === "function_call_output" || item.type === "custom_tool_call_output") {
       const call = typeof item.call_id === "string" ? calls.get(item.call_id) : undefined;
-      if (!call || call.result !== undefined || item.output === undefined) {
+      if (
+        !call ||
+        call.result !== undefined ||
+        item.output === undefined ||
+        (item.name !== undefined && item.name !== call.name) ||
+        (item.namespace !== undefined && item.namespace !== call.namespace)
+      ) {
         throw new ContinuationStopped("incompatible_history");
       }
       call.result = item.output;
       call.receipt = `checkpoint:${digest({ callId: call.id, output: item.output })}`;
+    } else if (item.type === "additional_tools" || item.type === "configuration_update") {
+      // Validated above and retained verbatim in the durable native history.
     } else if (
       item.type !== "message" &&
       !(typeof item.role === "string" && item.type === undefined)
@@ -88,7 +156,7 @@ export function snapshotRequest(body: JsonObject) {
     model: body.model,
     instructions: body.instructions,
     input,
-    tools: body.tools,
+    tools,
   };
   const serialized = JSON.stringify(canonical);
   // No headers, client metadata, proxy URLs, encrypted reasoning or credentials enter durable state.
@@ -209,6 +277,11 @@ export function fallbackContext(body: JsonObject): Request["context"] {
   }[] = [];
   let instructionBoundary = false;
   for (const [nativeInputIndex, value] of (snapshot.canonical.input as JsonObject[]).entries()) {
+    if (value.type === "additional_tools" || value.type === "configuration_update") {
+      // Catalog authority was validated at snapshot admission; sampling effort
+      // is provider-local configuration, not portable instructions or an effect.
+      continue;
+    }
     if (value.type === "message" || value.role) {
       if (
         !["user", "assistant", "developer", "system"].includes(String(value.role)) ||

@@ -42,7 +42,7 @@ const fixtureFetch = async (input, init) => {
   const url = new URL(input instanceof Request ? input.url : String(input));
   if (url.hostname === "api.openai.com" && url.pathname.endsWith("/responses")) {
     const body = await requestBody(input, init);
-    if (body.model !== "gpt-5.5") {
+    if (body.model !== process.env.CRYPTA_CANARY_PRIMARY_MODEL) {
       return sse({
         type: "message",
         id: "utility",
@@ -51,7 +51,11 @@ const fixtureFetch = async (input, init) => {
       });
     }
     stats.primary++;
-    const declared = (body.tools ?? []).flatMap((tool) =>
+    const catalog =
+      body.tools ??
+      (body.input ?? []).find((item) => item.type === "additional_tools")?.tools ??
+      [];
+    const declared = catalog.flatMap((tool) =>
       tool.type === "namespace"
         ? (tool.tools ?? []).map((entry) => ({ ...entry, namespace: tool.name }))
         : [tool],
@@ -70,7 +74,8 @@ const fixtureFetch = async (input, init) => {
       contentBlocks: Array.isArray(content) ? content.map((block) => block.type) : undefined,
     }));
     const result = (body.input ?? []).find(
-      (item) => item.type === "function_call_output" && item.call_id === "crypta_marker",
+      (item) =>
+        item.type === "function_call_output" && (item.call_id ?? item.id) === "crypta_marker",
     );
     if (result) {
       stats.failedAfterTool++;

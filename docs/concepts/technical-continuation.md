@@ -84,6 +84,14 @@ Interleaved native system/developer updates retain their text, priority and orig
 conversation position in a trusted instruction timeline because the portable SDK
 has no developer-message variant. User and tool text remain in their data roles
 and are never promoted into that timeline.
+Native Responses Lite catalogs are admitted only as one initial developer-owned
+`additional_tools` record; they cannot replace a different top-level catalog or
+change partway through the history. Strict reasoning-effort configuration updates
+remain in the checkpoint but are not promoted into portable instructions. Lite
+call/results use their explicit matching native IDs. Missing, conflicting or
+orphan result identities still stop for reconciliation; names and argument
+similarity never establish a receipt.
+
 Native provider-hosted `web_search` and `tool_search` declarations are not portable:
 they are excluded from the fallback function catalog with an explicit limitation in
 its instructions. The fallback must stop if one is required. History containing an
