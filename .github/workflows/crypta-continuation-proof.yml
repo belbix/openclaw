@@ -28,6 +28,7 @@ jobs:
         run: >-
           node scripts/run-vitest.mjs
           extensions/codex/src/technical-continuation.test.ts
+          extensions/codex/src/technical-continuation.namespace.test.ts
           extensions/codex/src/technical-continuation.http.test.ts
           extensions/codex/src/technical-continuation.store.test.ts
           extensions/codex/src/app-server/config.test.ts
@@ -40,8 +41,8 @@ jobs:
           --maxWorkers=2
       - name: Core and extension types
         run: pnpm tsgo:core && pnpm tsgo:extensions
-      - name: Build candidate package
-        run: pnpm build:package
+      - name: Build runtime for early native canary
+        run: node --import ./scripts/tsx.mjs scripts/build-all.mts runtime
         env:
           NODE_OPTIONS: --max-old-space-size=6144
       - name: Pack candidate Codex plugin
@@ -49,6 +50,19 @@ jobs:
         env:
           OPENCLAW_PLUGIN_NPM_PACK_OUTPUT_DIR: ${{ runner.temp }}
       - name: Native Gateway continuation canary
+        run: >-
+          node scripts/run-vitest.mjs --config test/vitest/vitest.e2e.config.ts
+          test/e2e/qa-lab/runtime/gateway-technical-continuation.product-proof.e2e.test.ts
+          --maxWorkers=1
+        env:
+          OPENCLAW_E2E_VERBOSE: "1"
+          OPENCLAW_E2E_USE_PREBUILT_DIST: "1"
+          CRYPTA_CANARY_CODEX_TARBALL: ${{ runner.temp }}/openclaw-codex-2026.11.3.tgz
+      - name: Build candidate package
+        run: pnpm build:package
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+      - name: Verify final package Gateway continuation
         run: >-
           node scripts/run-vitest.mjs --config test/vitest/vitest.e2e.config.ts
           test/e2e/qa-lab/runtime/gateway-technical-continuation.product-proof.e2e.test.ts

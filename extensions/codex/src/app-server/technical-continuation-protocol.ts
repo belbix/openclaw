@@ -1,15 +1,15 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { NativeModelSource } from "./native-subagent-monitor-types.js";
 import { isJsonObject, type JsonObject } from "./protocol.js";
 
 type Request = Parameters<NonNullable<NativeModelSource["completeModelRequest"]>>[0];
-export const digest = (value: unknown) =>
-  createHash("sha256").update(JSON.stringify(value)).digest("hex");
-export class ContinuationStopped extends Error {
-  constructor(readonly reason: string) {
-    super(`Model continuation stopped: ${reason}`);
-  }
-}
+import { ContinuationStopped, digest } from "./technical-continuation-errors.js";
+import {
+  continuationToolDeclarations,
+  toolNamespace,
+  toolWireName,
+} from "./technical-continuation-tools.js";
+export { ContinuationStopped, digest } from "./technical-continuation-errors.js";
 // Function arguments are JSON values: transport formatting must not hide a
 // repeated effect. Custom tools consume literal text, whose bytes stay significant.
 function toolArgumentsHash(item: JsonObject): string {
@@ -42,7 +42,14 @@ export function snapshotRequest(body: JsonObject) {
   }
   const calls = new Map<
     string,
-    { id: string; name: string; argumentsHash: string; result?: unknown; receipt?: string }
+    {
+      id: string;
+      name: string;
+      namespace?: string;
+      argumentsHash: string;
+      result?: unknown;
+      receipt?: string;
+    }
   >();
   const input = body.input.filter((item) => !(isJsonObject(item) && item.type === "reasoning"));
   for (const item of input) {
@@ -60,6 +67,7 @@ export function snapshotRequest(body: JsonObject) {
       calls.set(item.call_id, {
         id: item.call_id,
         name: item.name,
+        ...(toolNamespace(item) === undefined ? {} : { namespace: toolNamespace(item) }),
         argumentsHash: toolArgumentsHash(item),
       });
     } else if (item.type === "function_call_output" || item.type === "custom_tool_call_output") {
@@ -243,7 +251,7 @@ export function fallbackContext(body: JsonObject): Request["context"] {
       const toolCall = {
         type: "toolCall" as const,
         id: String(value.call_id),
-        name: String(value.name),
+        name: toolWireName(value),
         arguments: args,
       };
       const last = messages.at(-1);
@@ -266,7 +274,7 @@ export function fallbackContext(body: JsonObject): Request["context"] {
       messages.push({
         role: "toolResult",
         toolCallId: call.id,
-        toolName: call.name,
+        toolName: toolWireName(call),
         content: [
           {
             type: "text",
@@ -280,23 +288,12 @@ export function fallbackContext(body: JsonObject): Request["context"] {
       throw new ContinuationStopped("incompatible_history");
     }
   }
-  const tools = (snapshot.canonical.tools ?? []) as JsonObject[];
-  if (
-    !Array.isArray(tools) ||
-    tools.some(
-      (t) =>
-        !["function", "custom"].includes(String(t.type)) ||
-        typeof t.name !== "string" ||
-        (t.type === "function" && !isJsonObject(t.parameters)),
-    )
-  ) {
-    throw new ContinuationStopped("incompatible_history");
-  }
+  const tools = continuationToolDeclarations(snapshot.canonical.tools ?? []);
   return {
     systemPrompt: instructions.join("\n\n"),
     messages,
-    tools: tools.map((t) => ({
-      name: String(t.name),
+    tools: tools.map(({ native: t, wireName }) => ({
+      name: wireName,
       description: String(t.description ?? ""),
       parameters: (t.type === "custom"
         ? {
@@ -340,13 +337,15 @@ export function fallbackResponse(
   ) {
     throw new ContinuationStopped("incompatible_response");
   }
+  const tools = continuationToolDeclarations(declarations);
   const id = "resp_continuation_" + randomUUID();
   const output = publicContent.map((c) => {
     if (c.type === "toolCall") {
       if (completedIds.includes(c.id)) {
         throw new ContinuationStopped("duplicate_tool_call");
       }
-      const declared = declarations.find((t) => t.name === c.name);
+      const declaration = tools.find((t) => t.wireName === c.name);
+      const declared = declaration?.native;
       if (!declared) throw new ContinuationStopped("undeclared_tool_call");
       if (declared?.type === "custom") {
         if (typeof c.arguments.input !== "string" || Object.keys(c.arguments).length !== 1)
@@ -355,7 +354,8 @@ export function fallbackResponse(
           type: "custom_tool_call",
           id: "ctc_" + randomUUID(),
           call_id: c.id,
-          name: c.name,
+          name: String(declared.name),
+          ...(declaration?.namespace === undefined ? {} : { namespace: declaration.namespace }),
           input: c.arguments.input,
           status: "completed",
         };
@@ -364,7 +364,8 @@ export function fallbackResponse(
         type: "function_call",
         id: "fc_" + randomUUID(),
         call_id: c.id,
-        name: c.name,
+        name: String(declared.name),
+        ...(declaration?.namespace === undefined ? {} : { namespace: declaration.namespace }),
         arguments: JSON.stringify(c.arguments),
         status: "completed",
       };
@@ -439,7 +440,10 @@ export function pendingResponseCalls(
         pending.includes(item.call_id) ||
         completed.some(
           (c) =>
-            c.id === item.call_id || (c.name === item.name && c.argumentsHash === argumentsHash),
+            c.id === item.call_id ||
+            (c.name === item.name &&
+              c.namespace === toolNamespace(item) &&
+              c.argumentsHash === argumentsHash),
         )
       )
         throw new ContinuationStopped("duplicate_tool_call");

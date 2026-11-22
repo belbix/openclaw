@@ -164,6 +164,30 @@ describe("single model-request continuation (no agent replay)", () => {
     expect(f.fallbacks).toBe(0);
     expect([...f.rows.values()][0]?.value.phase).toBe("stopped");
   });
+  it("refuses a committed tool receipt rebound to another native namespace", async () => {
+    const f = setup();
+    const qualified = {
+      ...body,
+      input: [{ ...body.input[0]!, namespace: "functions" }, body.input[1]!],
+    };
+    await f.run(f.request(async () => failure(), qualified));
+    let calls = 0;
+    await expect(
+      f.run(
+        f.request(
+          async () => {
+            calls++;
+            return success();
+          },
+          {
+            ...qualified,
+            input: [{ ...qualified.input[0]!, namespace: "other_host" }, qualified.input[1]!],
+          },
+        ),
+      ),
+    ).rejects.toThrow("incompatible_tool_receipt");
+    expect(calls).toBe(0);
+  });
   it("does not admit inference with a missing tool result", async () => {
     const f = setup();
     let calls = 0;
