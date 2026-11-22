@@ -21,7 +21,6 @@ import {
   isMessageOnlyCodexSourceReply,
   isSystemAgentOnlyCodexDynamicToolAllowlist,
 } from "./dynamic-tool-profile.js";
-import { configuredProviders } from "./inference-provider-config.js";
 import {
   assertCodexInferenceRouteConfig,
   bindCodexInferenceThread,
@@ -185,6 +184,14 @@ export async function prepareCodexThreadRequestContext(
         config: params.params.config,
       });
   params.appServer = { ...params.appServer, serviceTier };
+  const continuationAgent = resolveSessionAgentIdsStrict({
+    sessionKey: params.params.sessionKey,
+    config: params.params.config,
+    agentId: params.params.agentId,
+  }).sessionAgentId;
+  const continuation = readCodexPluginConfig(
+    resolvePluginConfigObject(params.params.config, "codex"),
+  ).technicalContinuation?.[continuationAgent];
   const source = params.params.hostCapabilities.retainSourceAuthority?.();
   const modelPolicyEnforced =
     params.nativeModelAdmission === undefined ||
@@ -198,6 +205,7 @@ export async function prepareCodexThreadRequestContext(
       binding: options.binding,
       clientId: options.clientId,
       operatorBacked: source !== undefined,
+      httpOnly: continuation?.enabled === true,
       modelPolicyEnforced,
       modelProvider:
         options.binding?.preserveNativeModel || options.binding?.connectionScope === "supervision"
@@ -214,23 +222,11 @@ export async function prepareCodexThreadRequestContext(
   }
   // Each retry starts from caller configuration, never a previously injected private URL.
   params.config = inference?.config ?? options.config;
-  const continuationAgent = resolveSessionAgentIdsStrict({
-    sessionKey: params.params.sessionKey,
-    config: params.params.config,
-    agentId: params.params.agentId,
-  }).sessionAgentId;
-  const continuation = readCodexPluginConfig(
-    resolvePluginConfigObject(params.params.config, "codex"),
-  ).technicalContinuation?.[continuationAgent];
   if (continuation?.enabled) {
     if (!inference || !source)
       throw new AgentHarnessPreflightError(
         `Technical continuation requires an owned inference route and operator source (route=${Boolean(inference)}, source=${Boolean(source)})`,
       );
-    // Full history only: native WebSocket deltas cannot replace a durable canonical checkpoint.
-    params.config = { ...params.config };
-    for (const provider of configuredProviders(params.config))
-      params.config[`model_providers.${provider}.supports_websockets`] = false;
   }
 
   const contextTokenCap = resolveModelServiceTierContextTokens("openai", serviceTier ?? undefined);

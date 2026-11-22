@@ -128,6 +128,7 @@ async function prepareCodexInferenceRoute(params: {
   effectiveConfig?: CodexConfigReadResponse;
   modelPolicyEnforced?: boolean;
   optionalProjection?: true;
+  httpOnly?: boolean;
   signal?: AbortSignal;
   assertCurrent: () => void;
   authority?: CodexBindingAuthority;
@@ -314,6 +315,7 @@ async function prepareCodexInferenceRoute(params: {
     preserveAzureUrlFeatures,
     preserveCodexBackendRoutes,
     modelPolicyEnforced,
+    params.httpOnly === true,
   ]);
   const prepareRoute = () => {
     assertCurrent();
@@ -347,6 +349,7 @@ async function prepareCodexInferenceRoute(params: {
           configurationIdentity: key,
           assertCurrent: assertClient,
           oauth: owner.oauth,
+          httpOnly: params.httpOnly,
           preserveAzureUrlFeatures,
           preserveCodexBackendRoutes,
           bindModelExecution: createCodexInferenceModelBinding({
@@ -396,6 +399,8 @@ export async function prepareCodexInferenceThreadConfig(params: {
   effectiveConfig?: CodexConfigReadResponse;
   /** Captured from the issuing host, never from native request metadata. */
   operatorBacked?: boolean;
+  /** Require complete HTTP history without overriding reserved native providers. */
+  httpOnly?: boolean;
   /** Parent context still uses this transport when optional native model hooks are unavailable. */
   modelPolicyEnforced?: boolean;
   signal?: AbortSignal;
@@ -430,7 +435,8 @@ export async function prepareCodexInferenceThreadConfig(params: {
     retained.route.assertCurrent();
     if (
       owner.handles.get(retained.route)?.modelPolicyEnforced !==
-      (params.modelPolicyEnforced !== false)
+        (params.modelPolicyEnforced !== false) ||
+      retained.route.httpOnly !== (params.httpOnly === true)
     ) {
       retained = undefined;
     } else if (!params.operatorBacked) {

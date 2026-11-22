@@ -138,6 +138,44 @@ async function waitForUpstreamClose() {
 }
 
 describe("inference HTTP transport ownership", () => {
+  it("negotiates full-history HTTP before any upstream sampling", async () => {
+    proxy.close();
+    proxy = await createCodexInferenceProxy({
+      upstream: new URL("https://api.openai.com/v1"),
+      assertCurrent: () => {},
+      httpOnly: true,
+    });
+    let upstreamRequests = 0;
+    handle = (_req, res) => {
+      upstreamRequests++;
+      res.end("answer");
+    };
+    const response = await new Promise<IncomingMessage>((resolve, reject) => {
+      const req = request(
+        proxy.baseUrl + "/responses",
+        {
+          headers: {
+            Connection: "Upgrade",
+            Upgrade: "websocket",
+            "Sec-WebSocket-Version": "13",
+            "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+          },
+        },
+        resolve,
+      );
+      req.once("error", reject);
+      req.end();
+    });
+    expect(response.statusCode).toBe(426);
+    await readBody(response);
+    expect(upstreamRequests).toBe(0);
+    const http = post();
+    const completed = await http.response;
+    expect(completed.statusCode).toBe(200);
+    expect((await readBody(completed)).toString()).toBe("answer");
+    await http.closed;
+    expect(upstreamRequests).toBe(1);
+  });
   it("replays completed-parent prompt bytes through the HTTP serializer", async () => {
     const received: Buffer[] = [];
     handle = (req, res) => {

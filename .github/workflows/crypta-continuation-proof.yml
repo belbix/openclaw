@@ -55,6 +55,7 @@ jobs:
           src/auto-reply/reply/agent-runner-execution-command-events.test.ts
           extensions/codex/src/app-server/native-subagent-monitor.parent-retention.test.ts
           extensions/codex/src/app-server/inference-proxy.http.test.ts
+          extensions/codex/src/app-server/inference-routing.test.ts
           --maxWorkers=2
       - name: Core and extension types
         run: pnpm tsgo:core && pnpm tsgo:extensions

@@ -64,6 +64,8 @@ type ResidentTicket = {
 export async function createCodexInferenceProxy(params: {
   upstream: URL;
   configurationIdentity?: string;
+  /** Native 426 negotiation selects SSE before any sampling or tool execution. */
+  httpOnly?: boolean;
   assertCurrent: () => void;
   oauth?: CodexResponsesOAuth;
   preserveAzureUrlFeatures?: boolean;
@@ -482,6 +484,15 @@ export async function createCodexInferenceProxy(params: {
       const failHandshake = () => finish(performance.now() >= deadlineAtMonotonicMs ? 504 : 502);
       try {
         const { target, path } = resolveTarget(req);
+        if (params.httpOnly && path === "/responses") {
+          // Native built-in providers cannot be overridden. Its documented 426
+          // negotiation selects full-history HTTP before opening an upstream request.
+          rejectWebSocketUpgrade(socket, {
+            status: 426,
+            body: { contentType: "text/plain", text: "Full-history HTTP transport required" },
+          });
+          return;
+        }
         if (params.oauth) {
           throw new Error(FAILURE);
         }
@@ -784,6 +795,7 @@ export async function createCodexInferenceProxy(params: {
     }
     return {
       context,
+      httpOnly: params.httpOnly === true,
       upstream: upstream.toString(),
       configurationIdentity: params.configurationIdentity ?? upstream.toString(),
       baseUrl: "http://127.0.0.1:" + address.port + pathPrefix,
