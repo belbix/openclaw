@@ -98,19 +98,18 @@ describe("native Gateway technical continuation", () => {
       instance.env.CRYPTA_CANARY_MARKER = marker;
       instance.env.CRYPTA_CANARY_EVIDENCE = evidence;
       let client: Awaited<ReturnType<typeof connectGatewayStatusClient>> | undefined;
+      const filteredBundled = path.resolve("dist", `crypta-canary-plugins-${randomUUID()}`);
       try {
         // Source builds include a workspace Codex bundle; published core excludes it.
         // Retain every other real bundled plugin and select the packed Codex owner only.
         const bundled = path.resolve("dist/extensions");
-        const filteredBundled = instance.state.path("bundled-without-workspace-codex");
         await fs.mkdir(filteredBundled, { recursive: true });
         for (const entry of await fs.readdir(bundled, { withFileTypes: true })) {
           if (entry.isDirectory() && entry.name !== "codex")
-            await fs.symlink(
-              path.join(bundled, entry.name),
-              path.join(filteredBundled, entry.name),
-              "dir",
-            );
+            await fs.cp(path.join(bundled, entry.name), path.join(filteredBundled, entry.name), {
+              recursive: true,
+              dereference: true,
+            });
         }
         instance.env.OPENCLAW_BUNDLED_PLUGINS_DIR = filteredBundled;
         instance.env.OPENCLAW_TEST_TRUST_BUNDLED_PLUGINS_DIR = "1";
@@ -168,6 +167,7 @@ describe("native Gateway technical continuation", () => {
           .catch(() => "no provider I/O observed");
         client?.stop();
         await instance.cleanup();
+        await fs.rm(filteredBundled, { recursive: true, force: true });
       }
     },
   );
