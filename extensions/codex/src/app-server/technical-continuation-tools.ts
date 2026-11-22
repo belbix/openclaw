@@ -18,6 +18,7 @@ export function toolWireName(item: { name?: unknown; namespace?: unknown }): str
 
 export function continuationToolDeclarations(value: unknown) {
   if (!Array.isArray(value)) throw new ContinuationStopped("incompatible_history");
+  const unavailable = new Set<string>();
   const names = new Set<string>();
   const qualified = new Set<string>();
   const result: { native: JsonObject; wireName: string; namespace?: string }[] = [];
@@ -40,6 +41,12 @@ export function continuationToolDeclarations(value: unknown) {
   };
   for (const tool of value) {
     if (!isJsonObject(tool)) throw new ContinuationStopped("incompatible_history");
+    // These declarations advertise provider-hosted capabilities, not portable
+    // function authority. Executed hosted actions remain forbidden by snapshotRequest.
+    if (tool.type === "web_search" || tool.type === "tool_search") {
+      unavailable.add(tool.type);
+      continue;
+    }
     if (tool.type !== "namespace") {
       add(tool);
       continue;
@@ -48,5 +55,5 @@ export function continuationToolDeclarations(value: unknown) {
       throw new ContinuationStopped("incompatible_history");
     for (const child of tool.tools) add(child, tool.name);
   }
-  return result;
+  return { declarations: result, unavailable: [...unavailable].sort() };
 }

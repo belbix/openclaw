@@ -288,7 +288,16 @@ export function fallbackContext(body: JsonObject): Request["context"] {
       throw new ContinuationStopped("incompatible_history");
     }
   }
-  const tools = continuationToolDeclarations(snapshot.canonical.tools ?? []);
+  const { declarations: tools, unavailable } = continuationToolDeclarations(
+    snapshot.canonical.tools ?? [],
+  );
+  if (unavailable.length) {
+    instructions.push(
+      `Native provider-hosted tools are not available in this continuation: ${unavailable.join(", ")}. ` +
+        "Use only the provided function tools. Do not claim to have used unavailable tools; " +
+        "if the task requires one, explain the limitation and stop.",
+    );
+  }
   return {
     systemPrompt: instructions.join("\n\n"),
     messages,
@@ -337,7 +346,7 @@ export function fallbackResponse(
   ) {
     throw new ContinuationStopped("incompatible_response");
   }
-  const tools = continuationToolDeclarations(declarations);
+  const { declarations: tools } = continuationToolDeclarations(declarations);
   const id = "resp_continuation_" + randomUUID();
   const output = publicContent.map((c) => {
     if (c.type === "toolCall") {

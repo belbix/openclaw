@@ -15,7 +15,8 @@ A selected agent retains the original admitted source authority. Each fallback
 request uses normal host model admission, credential preparation and provider
 routing. The primary subscription configuration is unchanged. Native WebSocket
 sampling is disabled for the selected thread because partial actions cannot be
-safely fenced on that transport.
+safely fenced on that transport. The owned relay uses native HTTP 426 negotiation
+to select full-history HTTP without overriding reserved built-in providers.
 
 ```json5 validate=false
 {
@@ -79,6 +80,10 @@ agents. Authorization, budget, cancellation, unrecognized errors and incompatibl
 history stop. Unsupported native response actions and provider-specific incremental
 history are rejected rather than silently dropped. Only text and function/custom
 tool history can cross providers; encrypted reasoning and provider identifiers do not.
+Native provider-hosted `web_search` and `tool_search` declarations are not portable:
+they are excluded from the fallback function catalog with an explicit limitation in
+its instructions. The fallback must stop if one is required. History containing an
+executed hosted action is still rejected; its result is never discarded or replayed.
 
 Observability events distinguish continuing, stopped and reconciliation-required
 states. The ordinary reply handler delivers one sanitized notice per logical-turn

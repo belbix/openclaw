@@ -64,6 +64,28 @@ describe("native namespace continuation boundary", () => {
     expect(text).toContain('"namespace":"functions"');
     expect(text).toContain('"name":"write_marker"');
   });
+  it("explicitly removes unavailable hosted capabilities without discarding saved results", () => {
+    const context = fallbackContext({
+      ...request,
+      tools: [...request.tools, { type: "web_search" }, { type: "tool_search" }],
+    });
+    expect(context.tools).toHaveLength(1);
+    expect(context.systemPrompt).toContain(
+      "not available in this continuation: tool_search, web_search",
+    );
+    expect(context.systemPrompt).toContain("explain the limitation and stop");
+    expect(context.messages.find((m) => m.role === "toolResult")).toMatchObject({
+      content: [{ type: "text", text: "saved receipt" }],
+    });
+  });
+  it.each(["web_search_call", "tool_search_call"])(
+    "stops instead of translating an executed hosted action: %s",
+    (type) => {
+      expect(() =>
+        fallbackContext({ ...request, input: [...request.input, { type, id: "hosted" }] }),
+      ).toThrow("incompatible_history");
+    },
+  );
   it("rejects duplicate declarations instead of aliasing their authority", () => {
     expect(() =>
       fallbackContext({ ...request, tools: [...request.tools, ...request.tools] }),

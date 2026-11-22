@@ -102,6 +102,11 @@ const fixtureFetch = async (input, init) => {
   if (url.hostname === "api.moonshot.ai" && url.pathname.endsWith("/chat/completions")) {
     const body = await requestBody(input, init);
     stats.fallback++;
+    stats.hostedLimitationsExplicit = (body.messages ?? []).some(
+      (message) =>
+        message.role === "system" &&
+        JSON.stringify(message.content).includes("not available in this continuation"),
+    );
     stats.savedResult &&= (body.messages ?? []).some(
       (message) =>
         message.role === "tool" && JSON.stringify(message.content).includes("CRYPTA_TOOL_RECEIPT"),

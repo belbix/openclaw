@@ -183,6 +183,7 @@ describe("native Gateway technical continuation", () => {
           fallback: failure === "technical" ? 1 : 0,
           savedResult: true,
         });
+        if (failure === "technical") expect(stats.hostedLimitationsExplicit).toBe(true);
         expect(terminal.status).toBe(failure === "technical" ? "ok" : "error");
         const history = await client.request<{ messages: unknown[] }>("chat.history", {
           sessionKey,
