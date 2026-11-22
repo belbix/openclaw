@@ -2,6 +2,7 @@ import {
   embeddedAgentLog,
   type AgentHarnessRuntimeArtifactBinding,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
+import { redactSensitiveText } from "openclaw/plugin-sdk/logging-core";
 import { captureSessionEntryCurrentCheckAsync } from "openclaw/plugin-sdk/session-binding-runtime";
 import { isIncognitoSessionKey } from "openclaw/plugin-sdk/session-key-runtime";
 import {
@@ -35,6 +36,7 @@ import { codexNativeSubagentMonitorRuntime } from "./native-subagent-monitor.js"
 import type { CodexNativeSubagentSubmissionStore } from "./native-subagent-submission.js";
 import type { CodexSandboxPolicy, CodexTurnEnvironmentParams } from "./protocol.js";
 import {
+  emitCodexAppServerEvent,
   reportCodexBackgroundCleanupFailure,
   runCodexCleanupStep,
 } from "./run-attempt-lifecycle.js";
@@ -50,6 +52,7 @@ import {
   createIsolatedCodexAppServerClient,
   retainSharedCodexAppServerClientIfCurrent,
 } from "./shared-client.js";
+import { ContinuationStopped } from "./technical-continuation-protocol.js";
 import type {
   CodexAppServerThreadLifecycleBinding,
   CodexThreadFinalConfigPatchDecision,
@@ -328,6 +331,55 @@ export function prepareCodexAttemptResources(prompt: CodexAttemptPrompt) {
           onUnqualifiedModelCancelled: connection.abortExplicitly,
           requesterSessionKey: params.sessionKey,
           requesterTurnRunId: params.runId,
+          ...(connection.pluginConfig.technicalContinuation?.[sessionAgentId]?.enabled
+            ? {
+                continuationScope: {
+                  agentId: sessionAgentId,
+                  sessionId: params.sessionId,
+                  runId: params.runId,
+                  logicalTurnId: () =>
+                    params.userTurnTranscriptRecorder?.getAdmissionReceipt()?.logicalTurnId,
+                  observeDeliveries: async () => {
+                    params.hostCapabilities.assertActive();
+                    return params.resolveReplyDeliveryFacts
+                      ? params.resolveReplyDeliveryFacts()
+                      : { source: "unknown" as const, terminal: "unknown" as const };
+                  },
+                  assertCheckpointSafe: (text: string) => {
+                    if (redactSensitiveText(text) !== text)
+                      throw new ContinuationStopped("sensitive_history");
+                  },
+                  onEvent: async (
+                    event: import("./technical-continuation.js").ContinuationEvent,
+                  ) => {
+                    if (
+                      ![
+                        "continuation_started",
+                        "technical_retry",
+                        "continuation_blocked",
+                        "policy_refusal_stopped",
+                        "reconciliation_required",
+                      ].includes(event.name)
+                    )
+                      return;
+                    await emitCodexAppServerEvent(params, {
+                      stream: "notice",
+                      data: {
+                        phase: "runtime_continuation",
+                        state:
+                          event.name === "reconciliation_required"
+                            ? "reconciliation_required"
+                            : ["continuation_started", "technical_retry"].includes(event.name)
+                              ? "continuing"
+                              : "stopped",
+                        ...event.data,
+                      },
+                    });
+                  },
+                  config: connection.pluginConfig.technicalContinuation[sessionAgentId],
+                },
+              }
+            : {}),
           requestCustody,
           nativeProcessAuthority,
           completionScope: params.agentHarnessCompletionScope,

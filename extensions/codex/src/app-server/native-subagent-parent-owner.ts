@@ -32,6 +32,7 @@ export type NativeParentRegistration = Pick<
 > &
   Pick<
     ParentOwner,
+    | "continuationScope"
     | "requesterTurnRunId"
     | "requestCustody"
     | "cancelChildProcesses"
@@ -157,6 +158,7 @@ export async function registerNativeSubagentParent(
     requestCustody: params.requestCustody,
     cancelChildProcesses: params.cancelChildProcesses,
     requesterAgentId: params.agentId,
+    continuationScope: params.continuationScope,
     requesterSessionKey: params.requesterSessionKey,
     requesterTurnRunId: params.requesterTurnRunId,
     requesterSessionId: params.historyOwner?.sessionId,

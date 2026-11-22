@@ -137,6 +137,18 @@ export function retainHarnessSource(
   admittedRunContext: AdmittedRunContext,
   assertActive: () => void,
   nativeModelPolicySupported = false,
+  modelRequest?: (
+    source: NonNullable<
+      ReturnType<NonNullable<AgentHarnessHostCapabilities["retainSourceAuthority"]>>
+    >,
+    request: Parameters<
+      NonNullable<
+        NonNullable<
+          ReturnType<NonNullable<AgentHarnessHostCapabilities["retainSourceAuthority"]>>
+        >["completeModelRequest"]
+      >
+    >[0],
+  ) => Promise<import("../../llm/types.js").AssistantMessage>,
 ): ReturnType<NonNullable<AgentHarnessHostCapabilities["retainSourceAuthority"]>> {
   assertActive();
   const lifecycleGeneration = getAgentRunLifecycleGeneration();
@@ -182,9 +194,24 @@ export function retainHarnessSource(
     assertSourceCurrent();
     assertRetained();
   };
-  return Object.freeze({
+  const retained: NonNullable<
+    ReturnType<NonNullable<AgentHarnessHostCapabilities["retainSourceAuthority"]>>
+  > = Object.freeze({
     signal,
     assertCurrent,
+    ...(modelRequest
+      ? {
+          completeModelRequest: (
+            request: Parameters<
+              NonNullable<
+                NonNullable<
+                  ReturnType<NonNullable<AgentHarnessHostCapabilities["retainSourceAuthority"]>>
+                >["completeModelRequest"]
+              >
+            >[0],
+          ) => modelRequest(retained, request),
+        }
+      : {}),
     get modelPolicyRequired() {
       assertCurrent();
       const required = source.modelPolicy !== undefined;
@@ -229,6 +256,7 @@ export function retainHarnessSource(
       }
     },
   });
+  return retained;
 }
 
 /** Host-only original source; an explicit undefined operator identifies System work. */

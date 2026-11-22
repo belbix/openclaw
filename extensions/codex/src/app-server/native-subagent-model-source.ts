@@ -118,6 +118,7 @@ export function retainNativeModelExecution(
     return undefined;
   }
   const nativeOwner: ParentOwner = {
+    continuationScope: owner.continuationScope,
     requestCustody: owner.requestCustody,
     cancelChildProcesses: owner.cancelChildProcesses,
     requesterTurnRunId: owner.requesterTurnRunId,
@@ -422,6 +423,7 @@ function captureExecutionOwner(
   };
   return {
     ...capture,
+    continuationScope: owner.continuationScope,
     modelMapping: owner.modelMapping,
     get nativeReviewRequired() {
       return reviewRequirement.required;

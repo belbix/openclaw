@@ -48,6 +48,7 @@ type NativeModelMapping = Readonly<{
   authorizedModel: Readonly<{ provider: string; model: string }>;
 }>;
 export type NativeModelSourceCapture = {
+  continuationScope?: import("./technical-continuation.js").ContinuationScope;
   source: NativeModelSource | undefined;
   readonly modelMapping?: NativeModelMapping;
   readonly nativeReviewRequired: boolean;
@@ -92,6 +93,7 @@ export type NativeModelToolInputRequest = Omit<NativeModelInputRequest, "targetT
 };
 
 export type ParentOwner = {
+  continuationScope?: import("./technical-continuation.js").ContinuationScope;
   requestCustody?: NativeRequestCustody;
   cancelChildProcesses?: (
     threadId: string,

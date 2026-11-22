@@ -7,6 +7,7 @@ import {
 import { resolveAgentDir } from "openclaw/plugin-sdk/agent-runtime";
 import { resolveSessionAgentIdsStrict } from "openclaw/plugin-sdk/agent-scope-runtime";
 import { buildCodexUserMcpServersThreadConfigPatchForRun } from "openclaw/plugin-sdk/codex-mcp-projection";
+import { resolvePluginConfigObject } from "openclaw/plugin-sdk/plugin-config-runtime";
 import { resolveModelServiceTierContextTokens } from "openclaw/plugin-sdk/provider-model-metadata";
 import { normalizeCodexAppServerBindingModelProvider } from "./auth-profile.js";
 import { getCodexAppServerClientInstanceId } from "./client.js";
@@ -15,10 +16,12 @@ import {
   readCodexEffectiveConfig,
 } from "./config-layer-policy.js";
 import { assertCodexModelBackedReviewerEffectiveConfig } from "./config-reviewer.js";
+import { readCodexPluginConfig } from "./config.js";
 import {
   isMessageOnlyCodexSourceReply,
   isSystemAgentOnlyCodexDynamicToolAllowlist,
 } from "./dynamic-tool-profile.js";
+import { configuredProviders } from "./inference-provider-config.js";
 import {
   assertCodexInferenceRouteConfig,
   bindCodexInferenceThread,
@@ -211,6 +214,25 @@ export async function prepareCodexThreadRequestContext(
   }
   // Each retry starts from caller configuration, never a previously injected private URL.
   params.config = inference?.config ?? options.config;
+  const continuationAgent = resolveSessionAgentIdsStrict({
+    sessionKey: params.params.sessionKey,
+    config: params.params.config,
+    agentId: params.params.agentId,
+  }).sessionAgentId;
+  const continuation = readCodexPluginConfig(
+    resolvePluginConfigObject(params.params.config, "codex"),
+  ).technicalContinuation?.[continuationAgent];
+  if (continuation?.enabled) {
+    if (!inference || !source)
+      throw new AgentHarnessPreflightError(
+        "Technical continuation requires an owned inference route and operator source",
+      );
+    // Full history only: native WebSocket deltas cannot replace a durable canonical checkpoint.
+    params.config = { ...params.config };
+    for (const provider of configuredProviders(params.config))
+      params.config[`model_providers.${provider}.supports_websockets`] = false;
+  }
+
   const contextTokenCap = resolveModelServiceTierContextTokens("openai", serviceTier ?? undefined);
   if (contextTokenCap !== undefined) {
     const configuredLimit =

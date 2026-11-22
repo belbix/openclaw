@@ -59,6 +59,14 @@ export type AgentHarnessHostCapabilities = Readonly<{
     | Readonly<{
         assertCurrent: () => void;
         signal?: AbortSignal;
+        /** One model request under this original source; never starts an agent/tool loop. */
+        completeModelRequest?: (request: {
+          model: string;
+          context: import("../../llm/types.js").Context;
+          maxTokens: number;
+          signal: AbortSignal;
+          reserveBudget: (upperBoundUsd: number) => Promise<void>;
+        }) => Promise<import("../../llm/types.js").AssistantMessage>;
         /** Live preflight fact; absence means unknown, not an unrestricted source. */
         modelPolicyRequired?: boolean;
         /** Opaque equality for compatible active input; never authority by itself. */

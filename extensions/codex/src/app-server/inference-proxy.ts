@@ -41,6 +41,7 @@ import {
   MAX_UPLOADS,
 } from "./inference-upload.js";
 import type { CodexResponsesOAuth } from "./responses-oauth.js";
+import { ContinuationStopped } from "./technical-continuation-protocol.js";
 import { codexWebSocketDataToBuffer } from "./websocket-data.js";
 
 const MAX_ERROR_BODY_BYTES = 1024 * 1024;
@@ -261,6 +262,61 @@ export async function createCodexInferenceProxy(params: {
         }
         upload = await prepareHttp(req, path, signal, releasePermit, Boolean(params.oauth));
         const preparedUpload = upload;
+        if (preparedUpload.continueRequest) {
+          const result = await preparedUpload.continueRequest({
+            body: JSON.parse(preparedUpload.requestBytes.toString("utf8")),
+            signal: preparedUpload.signal,
+            assertCurrent: preparedUpload.assertCurrent,
+            primary: async (attemptSignal) => {
+              await guarded?.release();
+              guarded = undefined;
+              const primarySignal = AbortSignal.any([preparedUpload.signal, attemptSignal]);
+              const headers = {
+                ...relayHeaders(req.headers),
+                "content-length": String(preparedUpload.requestBytes.length),
+              };
+              delete headers["content-encoding"];
+              const auth = await params.oauth?.resolve(false);
+              const assertAuthorized = () => {
+                preparedUpload.assertCurrent();
+                primarySignal.throwIfAborted();
+                auth?.assertCurrent();
+              };
+              if (auth) {
+                for (const key of [
+                  "authorization",
+                  "chatgpt-account-id",
+                  "openai-organization",
+                  "openai-project",
+                ])
+                  delete headers[key];
+                headers.authorization = `Bearer ${auth.token}`;
+                headers["x-openai-chatpass-test"] = "codex-direct";
+              }
+              guarded = await fetchWithSsrFGuard({
+                url: target.toString(),
+                init: {
+                  method: "POST",
+                  headers,
+                  body: preparedUpload.requestBytes,
+                  signal: primarySignal,
+                },
+                signal: primarySignal,
+                beforeRequest: assertAuthorized,
+                requireHttps: true,
+                maxRedirects: 0,
+                capture: false,
+                mode: "trusted_env_proxy",
+                auditContext: "codex-technical-continuation",
+              });
+              assertAuthorized();
+              return guarded.response;
+            },
+          });
+          preparedUpload.assertCurrent();
+          res.writeHead(result.status, result.headers).end(result.body);
+          return;
+        }
         let body = upload.body;
         for (let attempt = 0; attempt < (params.oauth ? 2 : 1); attempt++) {
           const headers: Record<string, string> = {
@@ -330,6 +386,18 @@ export async function createCodexInferenceProxy(params: {
       } catch (error) {
         // Errors can contain headers, bodies, or the private URL: never log/reflect them.
         if (!res.headersSent && !res.destroyed) {
+          if (error instanceof ContinuationStopped) {
+            res.writeHead(400, { "content-type": "application/json" }).end(
+              JSON.stringify({
+                error: {
+                  type: "invalid_request_error",
+                  code: "continuation_stopped",
+                  message: error.message,
+                },
+              }),
+            );
+            return;
+          }
           const denied = authorizationFailure(error);
           if (denied) {
             res.writeHead(403, { "content-type": "application/json" }).end(denied);

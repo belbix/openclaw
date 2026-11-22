@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { rotateAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import {
   resetAgentRunRegistryForTest,
@@ -15,6 +15,12 @@ import {
 } from "../admitted-run-context.js";
 import { prepareOperatorModelPolicy } from "../operator-model-policy.js";
 import { createAdmittedHostCapabilityTestFixture } from "./host-capability.test-support.js";
+
+const modelIo = vi.hoisted(() => ({ prepare: vi.fn(), complete: vi.fn() }));
+vi.mock("../simple-completion-runtime.js", () => ({
+  acquireSimpleCompletionModelForAgent: modelIo.prepare,
+  completeWithPreparedSimpleCompletionModel: modelIo.complete,
+}));
 
 const cleanup: Array<() => void> = [];
 
@@ -54,6 +60,8 @@ afterEach(() => {
     release();
   }
   resetAgentRunRegistryForTest();
+  modelIo.prepare.mockReset();
+  modelIo.complete.mockReset();
 });
 
 it("returns no retained source authority without an operator", async () => {
@@ -252,3 +260,53 @@ it("captures request custody before plugin handoff and retains continuation ance
   expect(() => host.captureRequestCustody?.()).toThrow();
   expect(captureExecRequestCustodySelection(captured.owners ?? [])(custody)).toBe(true);
 });
+
+it.each(["explicit", "session"] as const)(
+  "retained model requests use immutable configuration and the %s agent identity after plugin mutation",
+  async (identity) => {
+    const config = { agents: { defaults: { model: "fixture/a" } } };
+    const source = createAdmittedRunOperatorAuthority({
+      profileId: "original-owner",
+      scopes: ["operator.write"],
+      assertCurrent() {},
+    });
+    const host = await createAdmittedHostCapabilityTestFixture(
+      {
+        runId: "retained-config",
+        agentId: identity === "explicit" ? "main" : undefined,
+        sessionKey: "agent:main:retained-config",
+        config,
+      },
+      { operatorAuthority: source, nativeModelPolicySupport: "exact" },
+    );
+    cleanup.push(host.closeAdmission, host.closeHost);
+    const retained = retain(host);
+    config.agents.defaults.model = "forged/route";
+    host.closeHost();
+    host.closeAdmission();
+    modelIo.prepare.mockResolvedValue({
+      selection: { provider: "fixture", modelId: "a" },
+      model: { cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 } },
+      auth: {},
+      [Symbol.asyncDispose]: async () => {},
+    });
+    modelIo.complete.mockResolvedValue({
+      role: "assistant",
+      content: [{ type: "text", text: "done" }],
+    });
+    await retained.completeModelRequest!({
+      model: "fixture/a",
+      context: { messages: [] },
+      maxTokens: 10,
+      signal: new AbortController().signal,
+      reserveBudget: async () => {},
+    });
+    expect(modelIo.prepare).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        agentId: "main",
+        cfg: { agents: { defaults: { model: "fixture/a" } } },
+      }),
+    );
+    expect(modelIo.complete).toHaveBeenCalledOnce();
+  },
+);

@@ -1,0 +1,55 @@
+name: Crypta continuation candidate
+on:
+  push:
+    branches: [crypta/runtime-continuation-v11.3]
+permissions:
+  contents: read
+concurrency:
+  group: crypta-continuation-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/setup-node-env
+        with:
+          install-bun: "false"
+          semantic-checks: "true"
+      - name: Changed-file format
+        shell: bash
+        run: |
+          mapfile -t changed < <(git diff-tree --no-commit-id --name-only -r HEAD)
+          pnpm exec oxfmt --check "${changed[@]}"
+      - name: Targeted behavioral proofs
+        run: >-
+          node scripts/run-vitest.mjs
+          extensions/codex/src/technical-continuation.test.ts
+          extensions/codex/src/technical-continuation.http.test.ts
+          extensions/codex/src/technical-continuation.store.test.ts
+          extensions/codex/src/app-server/config.test.ts
+          src/agents/embedded-agent-runner/result-fallback-classifier.test.ts
+          src/agents/harness/host-model-request.test.ts
+          src/agents/harness/host-capability.source-lifetime.test.ts
+          src/auto-reply/reply/agent-runner-execution-command-events.test.ts
+          extensions/codex/src/app-server/native-subagent-monitor.parent-retention.test.ts
+          extensions/codex/src/app-server/inference-proxy.http.test.ts
+          --maxWorkers=2
+      - name: Core and extension types
+        run: pnpm tsgo:core && pnpm tsgo:extensions
+      - name: Build candidate package
+        run: pnpm build:package
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+      - name: Pack immutable candidate
+        run: |
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP"
+          sha256sum "$RUNNER_TEMP"/openclaw-*.tgz > "$RUNNER_TEMP/candidate.sha256"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: crypta-continuation-candidate
+          path: |
+            ${{ runner.temp }}/openclaw-*.tgz
+            ${{ runner.temp }}/candidate.sha256
+          retention-days: 3

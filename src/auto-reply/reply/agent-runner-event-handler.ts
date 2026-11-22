@@ -56,6 +56,10 @@ export function createAgentRunEventHandler(params: {
     }
   };
 
+  // One visible notice per logical-turn state. A replay of an abandoned checkpoint
+  // is blocked by the runtime rather than re-emitting its notifications.
+  const continuationNotices = new Set<string>();
+
   return async (evt) => {
     params.turn.replyOperation?.recordActivity();
     params.lifecycleBackstop.note(evt);
@@ -213,6 +217,28 @@ export function createAgentRunEventHandler(params: {
         deleted: readPaths(evt.data.deleted),
         summary: readStringValue(evt.data.summary),
       });
+    }
+    if (evt.stream === "notice" && evt.data.phase === "runtime_continuation") {
+      const state = readStringValue(evt.data.state);
+      const logicalTurnId = readStringValue(evt.data.logicalTurnId);
+      const text =
+        state === "continuing"
+          ? "Technical model interruption; continuing from the saved checkpoint."
+          : state === "reconciliation_required"
+            ? "Execution stopped: action or delivery state requires reconciliation. No uncertain action will be repeated automatically."
+            : state === "stopped"
+              ? "Execution stopped. The checkpoint is saved; completed actions will not be replayed automatically."
+              : undefined;
+      if (!text || !logicalTurnId || shouldSuppressProgressAfterMessageToolDelivery()) return;
+      const key = `${logicalTurnId}:${state}`;
+      if (continuationNotices.has(key)) return;
+      // Mark before handing off; failed/unknown notification delivery is not retried here.
+      continuationNotices.add(key);
+      await deliverCompactionNoticePayload(
+        { text, isError: state !== "continuing" },
+        "runtime-continuation",
+      );
+      return;
     }
     if (evt.stream !== "compaction") {
       return;

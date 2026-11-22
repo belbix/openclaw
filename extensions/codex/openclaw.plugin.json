@@ -154,6 +154,49 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
+      "technicalContinuation": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false
+            },
+            "maxTransientRetries": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "maxTechnicalTransitionsPerTurn": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "fallbackModel": {
+              "type": "string",
+              "pattern": "^[^/]+/.+$"
+            },
+            "dailyBudgetUsd": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 10
+            },
+            "maxOutputTokens": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16384
+            },
+            "onUncertainToolState": {
+              "const": "stop"
+            },
+            "onPolicyRefusal": {
+              "const": "checkpoint-and-stop"
+            }
+          }
+        }
+      },
       "codexDynamicToolsLoading": {
         "type": "string",
         "enum": ["searchable", "direct"],

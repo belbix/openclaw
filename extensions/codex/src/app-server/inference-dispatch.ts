@@ -20,6 +20,9 @@ const decompress = promisify(zstdDecompress);
 
 export type CodexInferenceModelExecution = Readonly<{
   assertCurrent: () => void;
+  continueRequest?: ReturnType<
+    typeof import("./technical-continuation.js").createTechnicalContinuation
+  >;
   signal?: AbortSignal;
   release: () => void;
 }>;
@@ -228,7 +231,25 @@ export function createCodexInferenceModelBinding(params: {
         }
       };
       assertExecution();
+      let continueRequest: CodexInferenceModelExecution["continueRequest"];
+      if (
+        captured.continuationScope?.config.enabled &&
+        path === "/responses" &&
+        !parentExecution &&
+        metadata.requestKind !== "prewarm"
+      ) {
+        if (transport !== "http" || !captured.source) {
+          throw new Error("Technical continuation requires a full-history HTTP request");
+        }
+        const { openTechnicalContinuation } = await import("./technical-continuation-store.js");
+        continueRequest = await openTechnicalContinuation(
+          { ...captured.continuationScope, branchId: threadId },
+          captured.source,
+          turnId,
+        );
+      }
       return {
+        ...(continueRequest ? { continueRequest } : {}),
         assertCurrent: assertExecution,
         signal: model?.signal ?? captured.source?.signal,
         release,
@@ -323,6 +344,7 @@ export function createCodexInferenceDispatch(params: {
       ]);
       return {
         bytes: rewritten,
+        continueRequest: execution?.continueRequest,
         assertCurrent: assertPrepared,
         signal: requestSignal,
         contextSignal: prepared?.signal,
@@ -366,6 +388,8 @@ export function createCodexInferenceDispatch(params: {
               commit: undefined,
             }),
         assertCurrent: prepared.assertCurrent,
+        continueRequest: prepared.continueRequest,
+        requestBytes: prepared.bytes,
         signal: prepared.signal,
         releaseModelExecution: prepared.release,
       };

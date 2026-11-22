@@ -134,6 +134,24 @@ const codexPluginConfigSchema = z.strictObject({
       mcpServerName: z.string().optional(),
     })
     .optional(),
+  technicalContinuation: z
+    .record(
+      z.string(),
+      z.strictObject({
+        enabled: z.boolean().default(false),
+        maxTransientRetries: z.number().int().min(0).max(2).default(2),
+        maxTechnicalTransitionsPerTurn: z.number().int().min(0).max(1).default(1),
+        fallbackModel: z
+          .string()
+          .regex(/^[^/]+\/.+$/)
+          .optional(),
+        dailyBudgetUsd: z.number().positive().max(10).default(10),
+        maxOutputTokens: z.number().int().min(1).max(16384).default(8192),
+        onUncertainToolState: z.literal("stop").default("stop"),
+        onPolicyRefusal: z.literal("checkpoint-and-stop").default("checkpoint-and-stop"),
+      }),
+    )
+    .optional(),
   codexPlugins: z.unknown().optional(),
   supervision: codexSupervisionConfigSchema.optional(),
   appServer: z
@@ -205,6 +223,9 @@ export function readCodexPluginConfig(value: unknown): ParsedCodexPluginConfig {
   }
   const parsed = codexPluginConfigSchema.safeParse(value);
   if (!parsed.success) {
+    if (asNullableRecord(value)?.technicalContinuation !== undefined) {
+      throw new Error("Invalid plugins.entries.codex.config.technicalContinuation configuration");
+    }
     if (appServer?.nativeHookRelay !== undefined) {
       throw new Error(
         "Invalid plugins.entries.codex.config.appServer.nativeHookRelay configuration; remote hooks require an HTTPS URL and an absolute private credential directory.",

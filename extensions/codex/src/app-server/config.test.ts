@@ -1161,3 +1161,28 @@ describe("Codex app-server config", () => {
   });
 });
 /* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
+
+describe("agent-scoped technical continuation configuration", () => {
+  it("is disabled unless an exact agent entry opts in", () => {
+    expect(readCodexPluginConfig({}).technicalContinuation).toBeUndefined();
+    const config = readCodexPluginConfig({
+      technicalContinuation: { selected: { enabled: true }, disabled: {} },
+    });
+    expect(config.technicalContinuation?.selected?.enabled).toBe(true);
+    expect(config.technicalContinuation?.disabled?.enabled).toBe(false);
+    expect(config.technicalContinuation?.other).toBeUndefined();
+    expect(config.technicalContinuation?.selected?.fallbackModel).toBeUndefined();
+  });
+  it.each([
+    { dailyBudgetUsd: 11 },
+    { maxTransientRetries: 3 },
+    { maxTechnicalTransitionsPerTurn: 2 },
+    { onPolicyRefusal: "fallback" },
+  ])("rejects unsafe limits and refusal behavior: %j", (override) => {
+    expect(() =>
+      readCodexPluginConfig({
+        technicalContinuation: { selected: { enabled: true, ...override } },
+      }),
+    ).toThrow();
+  });
+});

@@ -8,6 +8,7 @@ import type {
   AgentHarnessNativeCompactionParams,
   ContextEngineHostCapability,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
+import { resolveSessionAgentIdsStrict } from "openclaw/plugin-sdk/agent-scope-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import { resolvePluginConfigObject } from "openclaw/plugin-sdk/plugin-config-runtime";
 import type { PluginRuntime } from "openclaw/plugin-sdk/plugin-runtime";
@@ -16,6 +17,7 @@ import {
   CODEX_NATIVE_TOOL_REQUIREMENTS,
   CODEX_TOOL_POLICY_SAFE_DENY_NAMES,
 } from "./native-tool-policy.js";
+import { readCodexPluginConfig } from "./src/app-server/config.js";
 import { readCodexRuntimeModelId } from "./src/app-server/model-runtime.js";
 import { sessionBindingIdentity } from "./src/app-server/session-binding-record.js";
 import type { CodexAppServerBindingStore } from "./src/app-server/session-binding.js";
@@ -353,7 +355,20 @@ export function createCodexAppServerAgentHarness(
           },
         );
 
-      const cyberFailover = resolveCodexCyberFailoverConfig(pluginConfig);
+      const configuredCyberFailover = resolveCodexCyberFailoverConfig(pluginConfig);
+      const continuation = readCodexPluginConfig(pluginConfig).technicalContinuation;
+      const continuationEnabled = Object.values(continuation ?? {}).some((entry) => entry.enabled)
+        ? continuation?.[
+            resolveSessionAgentIdsStrict({
+              config: params.config,
+              agentId: params.agentId,
+              sessionKey: params.sessionKey,
+            }).sessionAgentId
+          ]?.enabled === true
+        : false;
+      const cyberFailover = continuationEnabled
+        ? { ...configuredCyberFailover, mode: "off" as const }
+        : configuredCyberFailover;
       // Authorization is per authenticated workspace, so every lookup and record
       // below is scoped to this attempt's agent and auth profile.
       const workspace = { agentId: params.agentId, authProfileId: params.authProfileId };

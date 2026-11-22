@@ -13,6 +13,57 @@ import type { EmbeddedAgentParams } from "./agent-runner-execution.test-support.
 const state = await setupAgentRunnerExecutionTestState();
 
 describe("executeAgentTurn: command events", () => {
+  it("delivers distinct continuation states once through the normal reply callback", async () => {
+    const onBlockReply = vi.fn<NonNullable<GetReplyOptions["onBlockReply"]>>(async () => {});
+    state.runEmbeddedAgentMock.mockImplementationOnce(async (params: EmbeddedAgentParams) => {
+      for (const state of [
+        "continuing",
+        "continuing",
+        "stopped",
+        "reconciliation_required",
+        "unknown",
+      ]) {
+        await params.onAgentEvent?.({
+          stream: "notice",
+          data: {
+            phase: "runtime_continuation",
+            state,
+            logicalTurnId: "admitted-turn",
+            secret: "never-display",
+          },
+        });
+      }
+      return { payloads: [{ text: "final" }], meta: {} };
+    });
+    const executeAgentTurn = await getExecuteAgentTurnForTest();
+    await executeAgentTurn({
+      commandBody: "hello",
+      followupRun: createFollowupRun(),
+      sessionCtx: { Provider: "whatsapp", MessageSid: "msg" } as unknown as TemplateContext,
+      opts: { onBlockReply } satisfies GetReplyOptions,
+      typingSignals: createMockTypingSignaler(),
+      ...createAgentTurnExecutionDefaults(),
+    });
+    const notices = onBlockReply.mock.calls
+      .map(([payload]) => payload)
+      .filter((payload) => payload.text !== "final");
+    expect(notices).toEqual([
+      {
+        text: "Technical model interruption; continuing from the saved checkpoint.",
+        isError: false,
+      },
+      {
+        text: "Execution stopped. The checkpoint is saved; completed actions will not be replayed automatically.",
+        isError: true,
+      },
+      {
+        text: "Execution stopped: action or delivery state requires reconciliation. No uncertain action will be repeated automatically.",
+        isError: true,
+      },
+    ]);
+    expect(JSON.stringify(notices)).not.toContain("never-display");
+  });
+
   it("forwards plan, approval, command output, and patch events", async () => {
     const onPlanUpdate = vi.fn();
     const onApprovalEvent = vi.fn();

@@ -184,6 +184,7 @@ export function createAgentHarnessHostCapabilities(params: {
   };
   const requester = buildHarnessHostRequester(attempt);
   const config = attempt.config ? cloneSnapshot(attempt.config) : undefined;
+  const continuationAgentId = attempt.agentId;
   const hostSandboxEnabled = attempt.sandbox?.enabled === true;
   const requiredWorkspace = captureRequiredWorkspaceToolFloor(attempt, params.pluginId, config);
   const capturedWorkspaceOptions = requiredWorkspace?.apply();
@@ -466,7 +467,27 @@ export function createAgentHarnessHostCapabilities(params: {
     },
     ...(bindModelExecution ? { bindModelExecution } : {}),
     retainSourceAuthority: () =>
-      retainHarnessSource(attempt.admittedRunContext, assertActive, nativeModelPolicySupported),
+      retainHarnessSource(
+        attempt.admittedRunContext,
+        assertActive,
+        nativeModelPolicySupported,
+        config
+          ? async (source, request) => {
+              const { resolveSessionAgentIdsStrict } = await import("../agent-scope.js");
+              const { completeHarnessModelRequest } = await import("./host-model-request.js");
+              return completeHarnessModelRequest({
+                cfg: config,
+                agentId: resolveSessionAgentIdsStrict({
+                  config,
+                  agentId: continuationAgentId,
+                  sessionKey,
+                }).sessionAgentId,
+                source,
+                request,
+              });
+            }
+          : undefined,
+      ),
     reportOutputTokens: (outputTokens) => {
       assertActive();
       const data = emitAgentRunOutputTokens({
