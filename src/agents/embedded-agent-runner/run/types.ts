@@ -26,7 +26,7 @@ import type { McpConnectAction } from "../../mcp-connect-action.js";
 import type { McpAppChannelView } from "../../mcp-ui-resource.js";
 import type { ModelRef } from "../../model-selection.js";
 import type { PreparedModelRuntimeSnapshot } from "../../prepared-model-runtime.js";
-import type { ReplyDeliveryState } from "../../reply-completion.js";
+import type { ReplyDeliveryFactsObserver, ReplyDeliveryState } from "../../reply-completion.js";
 import type { AgentRuntimeModelAttempt, AgentRuntimePlan } from "../../runtime-plan/types.js";
 import type { AgentMessage } from "../../runtime/index.js";
 import type { resolveSandboxRuntimeStatus } from "../../sandbox/runtime-status.js";
@@ -143,6 +143,8 @@ export type EmbeddedRunAttemptTrajectoryRecorder = {
 };
 
 export type EmbeddedRunAttemptParams = EmbeddedRunAttemptBase & {
+  /** Source-owned delivery facts retained by the host for runtime continuation. */
+  resolveReplyDeliveryFacts?: ReplyDeliveryFactsObserver;
   modelCallSequence?: { value: number };
   /** Recomputed by the host for this attempt; never inherited from the requesting turn. */
   githubPublicationAvailable?: boolean;

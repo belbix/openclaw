@@ -21,7 +21,8 @@ jobs:
       - name: Changed-file format
         shell: bash
         run: |
-          mapfile -t changed < <(git diff-tree --no-commit-id --name-only -r HEAD)
+          git fetch --depth=1 origin 847611dcaa3bf0e2783335f961dd1fd0580e4d9f
+          mapfile -t changed < <(git diff --name-only 847611dcaa3bf0e2783335f961dd1fd0580e4d9f HEAD)
           pnpm exec oxfmt --check "${changed[@]}"
       - name: Targeted behavioral proofs
         run: >-
@@ -43,6 +44,13 @@ jobs:
         run: pnpm build:package
         env:
           NODE_OPTIONS: --max-old-space-size=6144
+      - name: Native Gateway continuation canary
+        run: >-
+          node scripts/run-vitest.mjs --config test/vitest/vitest.e2e.config.ts
+          test/e2e/qa-lab/runtime/gateway-technical-continuation.product-proof.e2e.test.ts
+          --maxWorkers=1
+        env:
+          OPENCLAW_E2E_VERBOSE: "1"
       - name: Pack immutable candidate
         run: |
           npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP"

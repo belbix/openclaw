@@ -593,6 +593,7 @@ export async function prepareAndDispatchEmbeddedRunAttempt(
     onAssistantMessageStart: params.onAssistantMessageStart,
     onBlockReply: params.onBlockReply,
     onBlockReplyFlush: params.onBlockReplyFlush,
+    resolveReplyDeliveryFacts: params.resolveReplyDeliveryFacts,
     blockReplyBreak: params.blockReplyBreak,
     blockReplyChunking: params.blockReplyChunking,
     onReasoningStream: params.onReasoningStream,

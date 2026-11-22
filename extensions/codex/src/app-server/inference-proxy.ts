@@ -271,7 +271,7 @@ export async function createCodexInferenceProxy(params: {
               await guarded?.release();
               guarded = undefined;
               const primarySignal = AbortSignal.any([preparedUpload.signal, attemptSignal]);
-              const headers = {
+              const headers: Record<string, string> = {
                 ...relayHeaders(req.headers),
                 "content-length": String(preparedUpload.requestBytes.length),
               };
@@ -298,7 +298,7 @@ export async function createCodexInferenceProxy(params: {
                 init: {
                   method: "POST",
                   headers,
-                  body: preparedUpload.requestBytes,
+                  body: new Uint8Array(preparedUpload.requestBytes),
                   signal: primarySignal,
                 },
                 signal: primarySignal,
