@@ -75,7 +75,8 @@ const fixtureFetch = async (input, init) => {
     }));
     const result = (body.input ?? []).find(
       (item) =>
-        item.type === "function_call_output" && (item.call_id ?? item.id) === "crypta_marker",
+        ["function_call_output", "custom_tool_call_output"].includes(item.type) &&
+        item.call_id === "crypta_marker",
     );
     if (result) {
       stats.failedAfterTool++;
@@ -103,6 +104,23 @@ const fixtureFetch = async (input, init) => {
       throw new Error(
         "Native canary requires a declared execution tool: " + JSON.stringify(stats.nativeTools),
       );
+    if (tool.type === "custom") {
+      return sse({
+        type: "custom_tool_call",
+        id: "ctc_marker",
+        call_id: "crypta_marker",
+        name: tool.name,
+        ...(tool.namespace ? { namespace: tool.namespace } : {}),
+        input:
+          "text(await tools.exec_command(" +
+          JSON.stringify({
+            cmd: "node -e " + quote(script),
+            yield_time_ms: 10000,
+            max_output_tokens: 100,
+          }) +
+          "))",
+      });
+    }
     return sse({
       type: "function_call",
       id: "fc_marker",
