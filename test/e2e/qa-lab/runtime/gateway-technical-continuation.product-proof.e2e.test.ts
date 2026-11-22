@@ -3,7 +3,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, onTestFailed } from "vitest";
-import { connectGatewayStatusClient } from "../../../helpers/gateway-e2e-harness.js";
+import type { GatewayClient } from "../../../../src/gateway/client.js";
+import { loadOrCreateDeviceIdentity } from "../../../../src/infra/device-identity.js";
+import { acquireGatewayTestClient } from "../../../helpers/gateway-client.js";
 import { createOpenClawTestInstance } from "../../../helpers/openclaw-test-instance.js";
 
 // Real built Gateway + pinned native Codex. Only provider network I/O is synthetic.
@@ -108,7 +110,7 @@ describe("native Gateway technical continuation", () => {
       const evidence = instance.state.path("provider-evidence.json");
       instance.env.CRYPTA_CANARY_MARKER = marker;
       instance.env.CRYPTA_CANARY_EVIDENCE = evidence;
-      let client: Awaited<ReturnType<typeof connectGatewayStatusClient>> | undefined;
+      let client: GatewayClient | undefined;
       const filteredBundled = path.resolve("dist", `crypta-canary-plugins-${randomUUID()}`);
       try {
         // Source builds include a workspace Codex bundle; published core excludes it.
@@ -134,7 +136,31 @@ describe("native Gateway technical continuation", () => {
         );
         expect(installed.code, installed.stderr + installed.stdout).toBe(0);
         await instance.startGateway();
-        client = await connectGatewayStatusClient(instance);
+        // Status CLI clients intentionally have no human profile/source custody.
+        // Authenticate a real local owner UI socket through the normal Gateway admission.
+        client = await acquireGatewayTestClient(
+          {
+            url: instance.url,
+            origin: `http://127.0.0.1:${instance.port}`,
+            token: instance.gatewayToken,
+            env: instance.env,
+            role: "operator",
+            clientName: "webchat-ui",
+            clientDisplayName: "Crypta continuation owner proof",
+            mode: "webchat",
+            scopes: ["operator.admin", "operator.read", "operator.write"],
+            deviceIdentity: loadOrCreateDeviceIdentity({
+              path: instance.state.path("owner-device.sqlite"),
+            }),
+          },
+          {
+            timeoutMs: 15_000,
+            timeoutMessage: "Owner UI connection timed out",
+            closeMessage: "Owner UI closed",
+          },
+        );
+        const self = await client.request<{ profile: { id: string } }>("users.self", {});
+        expect(self.profile.id).toBeTruthy();
         const sessionKey = `agent:main:continuation-${randomUUID()}`;
         const started = await client.request<{ runId: string; status: string }>("chat.send", {
           sessionKey,

@@ -10,6 +10,11 @@ const sse = (item) => {
   return new Response(
     [
       { type: "response.created", response: { id, status: "in_progress", output: [] } },
+      {
+        type: "response.output_item.added",
+        output_index: 0,
+        item: { ...item, status: "in_progress" },
+      },
       { type: "response.output_item.done", output_index: 0, item },
       {
         type: "response.completed",
@@ -46,7 +51,12 @@ const fixtureFetch = async (input, init) => {
       });
     }
     stats.primary++;
-    stats.nativeTools = (body.tools ?? []).map(({ type, name }) => ({ type, name }));
+    const declared = (body.tools ?? []).flatMap((tool) =>
+      tool.type === "namespace"
+        ? (tool.tools ?? []).map((entry) => ({ ...entry, namespace: tool.name }))
+        : [tool],
+    );
+    stats.nativeTools = declared.map(({ type, name, namespace }) => ({ type, name, namespace }));
     const result = (body.input ?? []).find(
       (item) => item.type === "function_call_output" && item.call_id === "crypta_marker",
     );
@@ -69,16 +79,24 @@ const fixtureFetch = async (input, init) => {
     }
     save();
     const script = `require('node:fs').writeFileSync(${JSON.stringify(marker)},'one',{flag:'wx'});console.log('CRYPTA_TOOL_RECEIPT')`;
+    const tool =
+      declared.find((entry) => entry.name === "exec_command") ??
+      declared.find((entry) => entry.name === "exec");
+    if (!tool)
+      throw new Error(
+        "Native canary requires a declared execution tool: " + JSON.stringify(stats.nativeTools),
+      );
     return sse({
       type: "function_call",
       id: "fc_marker",
       call_id: "crypta_marker",
-      name: "exec_command",
-      arguments: JSON.stringify({
-        cmd: "node -e " + quote(script),
-        yield_time_ms: 10000,
-        max_output_tokens: 100,
-      }),
+      name: tool.name,
+      ...(tool.namespace ? { namespace: tool.namespace } : {}),
+      arguments: JSON.stringify(
+        tool.name === "exec_command"
+          ? { cmd: "node -e " + quote(script), yield_time_ms: 10000, max_output_tokens: 100 }
+          : { command: "node -e " + quote(script), yieldMs: 10000 },
+      ),
     });
   }
   if (url.hostname === "api.moonshot.ai" && url.pathname.endsWith("/chat/completions")) {
