@@ -20,6 +20,7 @@ describe("native Gateway technical continuation", () => {
     "preserves one tool effect after $failure failure on $modelId",
     { timeout: 300_000 },
     async ({ failure, modelId }) => {
+      const coreRoot = path.resolve(process.env.CRYPTA_CANARY_CORE_ROOT ?? ".");
       const primary = `openai/${modelId}`;
       const fallback = "moonshot/kimi-fixture";
       const model = (id: string) => ({
@@ -36,7 +37,7 @@ describe("native Gateway technical continuation", () => {
         entrypoint: [
           "--import",
           fileURLToPath(new URL("./technical-continuation-fetch.fixture.mjs", import.meta.url)),
-          "dist/index.js",
+          path.join(coreRoot, "dist/index.js"),
         ],
         env: {
           // Hermetic synthetic upstreams do not inherit runner-specific native trust/proxy profiles.
@@ -121,7 +122,7 @@ describe("native Gateway technical continuation", () => {
       try {
         // Source builds include a workspace Codex bundle; published core excludes it.
         // Retain every other real bundled plugin and select the packed Codex owner only.
-        const bundled = path.resolve("dist/extensions");
+        const bundled = path.join(coreRoot, "dist/extensions");
         await fs.mkdir(filteredBundled, { recursive: true });
         for (const entry of await fs.readdir(bundled, { withFileTypes: true })) {
           if (entry.isDirectory() && entry.name !== "codex")
@@ -181,6 +182,13 @@ describe("native Gateway technical continuation", () => {
           { timeoutMs: 125_000 },
         );
         console.log("Native terminal:", JSON.stringify(terminal));
+        if (process.env.CRYPTA_CANARY_NATIVE_VERSION)
+          expect(instance.logs()).toMatch(
+            new RegExp(
+              "Codex app-server: using .* " +
+                process.env.CRYPTA_CANARY_NATIVE_VERSION.replaceAll(".", "\\."),
+            ),
+          );
         expect(await fs.readFile(marker, "utf8")).toBe("one");
         const stats = JSON.parse(await fs.readFile(evidence, "utf8"));
         expect(stats).toMatchObject({

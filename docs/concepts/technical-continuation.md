@@ -89,8 +89,11 @@ Native Responses Lite catalogs are admitted only as one initial developer-owned
 change partway through the history. Strict reasoning-effort configuration updates
 remain in the checkpoint but are not promoted into portable instructions. Lite
 calls/results use their explicit matching `call_id`, independently of optional
-history item `id` values. Missing or orphan result identities still stop for
-reconciliation; names and argument
+history item `id` values. The exact native 0.171 unpaired
+`agent.openclaw_current_sender` additional-context carrier is projected as untrusted
+user data, not as an execution or receipt. It cannot complete a pending call, collide
+with a declared tool, or enter the trusted instruction timeline. Other missing or
+orphan result identities still stop for reconciliation; names and argument
 similarity never establish a receipt.
 
 Native provider-hosted `web_search` and `tool_search` declarations are not portable:

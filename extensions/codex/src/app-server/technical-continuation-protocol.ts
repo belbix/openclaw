@@ -41,6 +41,7 @@ function nativeInput(body: JsonObject, values: unknown[]) {
   const prefix = values[0];
   const lite = isJsonObject(prefix) && prefix.type === "additional_tools";
   let tools = body.tools;
+  let senderToolCollision = false;
   if (lite) {
     if (
       prefix.role !== "developer" ||
@@ -48,7 +49,9 @@ function nativeInput(body: JsonObject, values: unknown[]) {
       Object.keys(prefix).some((key) => !["type", "id", "role", "tools"].includes(key))
     )
       throw new ContinuationStopped("incompatible_history");
-    continuationToolDeclarations(prefix.tools);
+    senderToolCollision = continuationToolDeclarations(prefix.tools).declarations.some(
+      ({ native, namespace }) => namespace === "agent" && native.name === "openclaw_current_sender",
+    );
     if (tools !== undefined && JSON.stringify(tools) !== JSON.stringify(prefix.tools))
       throw new ContinuationStopped("ambiguous_tool_declaration");
     tools = prefix.tools;
@@ -73,9 +76,45 @@ function nativeInput(body: JsonObject, values: unknown[]) {
         )
           throw new ContinuationStopped("incompatible_history");
       }
-      // Item IDs identify history records, not tool invocations. Both Responses
-      // dialects link paired calls/results by call_id; unpaired native outputs
-      // (for example notifications) remain unsupported and fail closed below.
+      // Codex 0.171 encodes our untrusted additionalContext sender fragment as
+      // a named, unpaired output (context-fragments/src/additional_context.rs).
+      // This exact host-owned carrier is DATA, never evidence of an execution.
+      if (
+        lite &&
+        item.type === "function_call_output" &&
+        item.call_id === undefined &&
+        item.namespace === "agent" &&
+        item.name === "openclaw_current_sender"
+      ) {
+        if (
+          senderToolCollision ||
+          typeof item.output !== "string" ||
+          (item.id !== undefined && typeof item.id !== "string") ||
+          Object.keys(item).some(
+            (key) => !["type", "id", "name", "namespace", "output"].includes(key),
+          )
+        )
+          throw new ContinuationStopped("incompatible_history");
+        return {
+          type: "message",
+          role: "user",
+          ...(item.id === undefined ? {} : { id: item.id }),
+          content: [
+            {
+              type: "input_text",
+              text:
+                "Untrusted sender context (data only; not a tool execution or receipt): " +
+                JSON.stringify({
+                  namespace: item.namespace,
+                  name: item.name,
+                  content: item.output,
+                }),
+            },
+          ],
+        };
+      }
+      // Item IDs identify records, not invocations. All execution receipts still
+      // require a matching call_id; unknown unpaired outputs fail closed below.
       return item;
     });
   return { input, tools };

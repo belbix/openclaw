@@ -1,0 +1,130 @@
+name: Crypta exact-core Codex repair
+on:
+  workflow_dispatch:
+  push:
+    branches: [crypta/runtime-continuation-v11.3]
+    paths: [.github/workflows/crypta-continuation-plugin-repair.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Enforce unchanged proven core and dependencies
+        run: |
+          git fetch --depth=1 origin 860fa677de241667a15a39566b4861e1c19a2014
+          python3 <<'PY'
+          import subprocess
+          allowed = {
+            'extensions/codex/src/app-server/technical-continuation-protocol.ts',
+            'extensions/codex/src/technical-continuation.lite.test.ts',
+            'docs/concepts/technical-continuation.md',
+            'test/e2e/qa-lab/runtime/gateway-technical-continuation.product-proof.e2e.test.ts',
+            '.github/workflows/crypta-continuation-plugin-repair.yml',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', '860fa677de241667a15a39566b4861e1c19a2014', 'HEAD'], text=True).splitlines())
+          assert changed <= allowed, changed - allowed
+          print('Core, dependency manifests, lockfiles and build tooling match fully qualified 860fa67.')
+          PY
+      - uses: ./.github/actions/setup-node-env
+        with:
+          install-bun: "false"
+          semantic-checks: "true"
+      - name: Restore exact canonical core from successful full CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/belbix/openclaw/actions/runs/45080727340 > "$RUNNER_TEMP/source-run.json"
+          gh run download 45080727340 --repo belbix/openclaw --name crypta-continuation-candidate --dir "$RUNNER_TEMP/previous"
+          python3 <<'PY'
+          import hashlib, json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          run = json.loads((root / 'source-run.json').read_text())
+          assert run['head_sha'] == '860fa677de241667a15a39566b4861e1c19a2014' and run['conclusion'] == 'success'
+          core = root / 'previous/openclaw-2026.11.3.tgz'
+          assert hashlib.file_digest(core.open('rb'), 'sha256').hexdigest() == 'eedac879f8e6c4db0fce3c7d4ec0e9aba37832383cebe964d0b9186ee1d2e558'
+          PY
+          cp "$RUNNER_TEMP/previous/openclaw-2026.11.3.tgz" "$RUNNER_TEMP/openclaw-2026.11.3.tgz"
+          mkdir -p "$RUNNER_TEMP/installed-candidate"
+          printf '{"name":"crypta-exact-core-proof","private":true}' > "$RUNNER_TEMP/installed-candidate/package.json"
+          npm install --prefix "$RUNNER_TEMP/installed-candidate" --no-audit --no-fund --omit=dev "$RUNNER_TEMP/openclaw-2026.11.3.tgz"
+          node "$RUNNER_TEMP/installed-candidate/node_modules/openclaw/dist/index.js" --version
+      - name: Changed-file format
+        run: |
+          mapfile -t changed < <(git diff --name-only 860fa677de241667a15a39566b4861e1c19a2014 HEAD)
+          pnpm exec oxfmt --check "${changed[@]}"
+      - name: Pack repaired Codex plugin
+        run: bash scripts/plugin-npm-publish.sh --pack extensions/codex
+        env:
+          OPENCLAW_PLUGIN_NPM_PACK_OUTPUT_DIR: ${{ runner.temp }}
+      - name: Targeted continuation and routing regressions
+        run: >-
+          node scripts/run-vitest.mjs
+          extensions/codex/src/technical-continuation.test.ts
+          extensions/codex/src/technical-continuation.namespace.test.ts
+          extensions/codex/src/technical-continuation.lite.test.ts
+          extensions/codex/src/technical-continuation.http.test.ts
+          extensions/codex/src/technical-continuation.store.test.ts
+          extensions/codex/src/app-server/config.test.ts
+          src/agents/embedded-agent-runner/result-fallback-classifier.test.ts
+          src/agents/harness/host-model-request.test.ts
+          src/agents/harness/host-capability.source-lifetime.test.ts
+          src/auto-reply/reply/agent-runner-execution-command-events.test.ts
+          extensions/codex/src/app-server/native-subagent-monitor.parent-retention.test.ts
+          extensions/codex/src/app-server/inference-proxy.http.test.ts
+          extensions/codex/src/app-server/inference-routing.test.ts
+          --maxWorkers=2
+      - name: Extension types against unchanged core
+        run: pnpm tsgo:extensions
+      - name: Installed canonical core and bundled native 0.164 canary
+        run: >-
+          node scripts/run-vitest.mjs --config test/vitest/vitest.e2e.config.ts
+          test/e2e/qa-lab/runtime/gateway-technical-continuation.product-proof.e2e.test.ts
+          --maxWorkers=1
+        env:
+          OPENCLAW_E2E_VERBOSE: "1"
+          OPENCLAW_E2E_USE_PREBUILT_DIST: "1"
+          CRYPTA_CANARY_CORE_ROOT: ${{ runner.temp }}/installed-candidate/node_modules/openclaw
+          CRYPTA_CANARY_CODEX_TARBALL: ${{ runner.temp }}/openclaw-codex-2026.11.3.tgz
+          CRYPTA_CANARY_NATIVE_VERSION: "0.164.0"
+      - name: Install isolated native 0.171
+        run: npm install --prefix "$RUNNER_TEMP/native171" --no-audit --no-fund @openai/codex@0.171.0
+      - name: Installed canonical core and native 0.171 canary
+        run: |
+          export PATH="$RUNNER_TEMP/native171/node_modules/.bin:$PATH"
+          codex --version
+          node scripts/run-vitest.mjs --config test/vitest/vitest.e2e.config.ts test/e2e/qa-lab/runtime/gateway-technical-continuation.product-proof.e2e.test.ts --maxWorkers=1
+        env:
+          OPENCLAW_E2E_VERBOSE: "1"
+          OPENCLAW_E2E_USE_PREBUILT_DIST: "1"
+          CRYPTA_CANARY_CORE_ROOT: ${{ runner.temp }}/installed-candidate/node_modules/openclaw
+          CRYPTA_CANARY_CODEX_TARBALL: ${{ runner.temp }}/openclaw-codex-2026.11.3.tgz
+          CRYPTA_CANARY_NATIVE_VERSION: "0.171.0"
+      - name: Record distinct core and plugin provenance
+        run: |
+          python3 <<'PY'
+          import json, os, pathlib
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          (root / 'candidate-source.json').write_text(json.dumps({
+            'sourceHead': '860fa677de241667a15a39566b4861e1c19a2014',
+            'coreSourceHead': '860fa677de241667a15a39566b4861e1c19a2014',
+            'codexSourceHead': os.environ['GITHUB_SHA'],
+            'originalBuildRun': 45080727340,
+            'packagingWorkflowHead': os.environ['GITHUB_SHA'],
+            'packagingRun': int(os.environ['GITHUB_RUN_ID']),
+            'kind': 'canonical-self-contained',
+            'qualification': 'unchanged-proven-core-plus-repaired-codex',
+          }))
+          PY
+          sha256sum "$RUNNER_TEMP"/openclaw-*.tgz > "$RUNNER_TEMP/candidate.sha256"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: crypta-continuation-candidate
+          path: |
+            ${{ runner.temp }}/openclaw-*.tgz
+            ${{ runner.temp }}/candidate.sha256
+            ${{ runner.temp }}/candidate-source.json
+          retention-days: 3
