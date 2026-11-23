@@ -58,7 +58,7 @@ function nativeInput(body: JsonObject, values: unknown[]) {
   }
   const input = values
     .filter((item) => !(isJsonObject(item) && item.type === "reasoning"))
-    .map((value, index) => {
+    .map((value, index): JsonObject => {
       if (!isJsonObject(value)) throw new ContinuationStopped("incompatible_history");
       const item = { ...value };
       delete item.internal_chat_message_metadata_passthrough;
